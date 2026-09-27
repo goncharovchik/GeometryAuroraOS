@@ -1,0 +1,21 @@
+﻿{
+    "dart.flutterSdkPath":  "C:\\flutter-aurora",
+    "dart.previewFlutterUiGuides":  true,
+    "dart.lineLength":  120,
+    "editor.formatOnSave":  true,
+    "editor.defaultFormatter":  "Dart-Code.dart-code",
+    "files.associations":  {
+                               "*.desktop":  "ini",
+                               "*.spec":  "yaml"
+                           },
+    "files.exclude":  {
+                          "**/.DS_Store":  true,
+                          "**/.dart_tool":  false,
+                          "**/Thumbs.db":  true,
+                          "**/.svn":  true,
+                          "aurora/bundle":  true,
+                          "**/CVS":  true,
+                          "**/.git":  true,
+                          "**/.hg":  true
+                      }
+}

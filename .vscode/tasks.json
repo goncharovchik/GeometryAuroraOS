@@ -1,0 +1,83 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Flutter: pub get",
+            "type": "shell",
+            "command": "C:\\flutter-aurora\\bin\\flutter.bat",
+            "args": ["pub", "get"],
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "Собрать Flutter RPM (Docker)",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\build_flutter_rpm.ps1"
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Запустить эмулятор Авроры",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\start_emulator.ps1"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Собрать и запустить в Авроре",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\build_and_run_aurora.ps1"
+            ],
+            "problemMatcher": [],
+            "dependsOn": []
+        },
+        {
+            "label": "Быстрый запуск в Авроре (без пересборки)",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\run_aurora.ps1"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Настроить и проверить окружение",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\setup_environment.ps1"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}
