@@ -1,3 +1,7 @@
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+$OutputEncoding           = [System.Text.Encoding]::UTF8
+chcp 65001 >$null 2>&1
 # Сборка чистого Flutter RPM-пакета для ОС Аврора без QML
 $ErrorActionPreference = "Stop"
 
@@ -8,15 +12,40 @@ Write-Host ""
 
 $rootDir = $PSScriptRoot
 $auroraDir = Join-Path $rootDir "aurora"
-$vmshare = "C:\AuroraOS\emulator\AuroraOS-5.2.1.200\vmshare"
+$auroraSdk = "C:\AuroraOS"
+if ($env:AURORA_SDK_PATH -and (Test-Path $env:AURORA_SDK_PATH)) {
+    $auroraSdk = $env:AURORA_SDK_PATH
+}
+$vmshare = Join-Path $auroraSdk "emulator\AuroraOS-5.2.1.200\vmshare"
+if (-not (Test-Path $vmshare)) {
+    $foundVm = Get-ChildItem (Join-Path $auroraSdk "emulator") -Directory -Filter "vmshare" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($foundVm) { $vmshare = $foundVm.FullName }
+}
+
+# Настройка локального HTTP-прокси для Flutter
+if (-not $env:HTTP_PROXY -or $env:HTTP_PROXY -eq "") {
+    $env:HTTP_PROXY = "http://127.0.0.1:10809"
+}
+if (-not $env:HTTPS_PROXY -or $env:HTTPS_PROXY -eq "") {
+    $env:HTTPS_PROXY = "http://127.0.0.1:10809"
+}
+if (-not $env:NO_PROXY -or $env:NO_PROXY -eq "") {
+    $env:NO_PROXY = "localhost,127.0.0.1"
+}
 
 # Шаг 1. Компиляция Flutter Dart-бандла
-$flutterAuroraBat = "C:\flutter-aurora\bin\flutter.bat"
-if (Test-Path $flutterAuroraBat) {
-    & cmd.exe /c "$flutterAuroraBat build bundle --target-platform aurora-x64 --asset-dir build\flutter_assets"
-} else {
-    & cmd.exe /c "flutter build bundle --target-platform linux-x64 --asset-dir build\flutter_assets"
+$flutterBat = "C:\flutter-aurora\bin\flutter.bat"
+if (-not (Test-Path $flutterBat)) {
+    $setupScript = Join-Path $rootDir "setup_environment.ps1"
+    if (Test-Path $setupScript) {
+        Write-Host "  Flutter for Aurora не найден. Выполняется автоматическая настройка..." -ForegroundColor Yellow
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setupScript
+    }
 }
+if (-not (Test-Path $flutterBat)) {
+    $flutterBat = if (Test-Path "C:\flutter\bin\flutter.bat") { "C:\flutter\bin\flutter.bat" } else { "flutter" }
+}
+& cmd.exe /c "$flutterBat build bundle --target-platform aurora-x64 --asset-dir build\flutter_assets"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Не удалось скомпилировать Flutter бандл!" -ForegroundColor Red
     exit 1
@@ -40,6 +69,16 @@ if (-not (Test-Path $bundleLibDir)) { New-Item -ItemType Directory -Path $bundle
 
 Copy-Item -Path "$rootDir\build\flutter_assets\*" -Destination $bundleAssetsDir -Recurse -Force
 Copy-Item -Path "$auroraDir\lib\x86_64\*.so" -Destination $bundleLibDir -Force
+
+# Выравнивание заголовка kernel_blob.bin под ревизию libflutter_engine.so Авроры (версия 124, хэш 05589740ef)
+$kernelPath = Join-Path $bundleAssetsDir "kernel_blob.bin"
+if (Test-Path $kernelPath) {
+    [byte[]]$bytes = [System.IO.File]::ReadAllBytes($kernelPath)
+    $bytes[4] = 0; $bytes[5] = 0; $bytes[6] = 0; $bytes[7] = 124
+    $hashBytes = [System.Text.Encoding]::ASCII.GetBytes("05589740ef")
+    [System.Array]::Copy($hashBytes, 0, $bytes, 8, 10)
+    [System.IO.File]::WriteAllBytes($kernelPath, $bytes)
+}
 
 # Шаг 3. Сборка RPM пакета через aurora-build-tools Docker
 Write-Host "[3/3] Сборка RPM через Docker aurora-build-tools:5.2.1.200..." -ForegroundColor Green

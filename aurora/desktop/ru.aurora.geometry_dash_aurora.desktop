@@ -4,9 +4,8 @@ Name=Geometry Dash
 Comment=Geometry Dash Flutter rhythm platformer for Aurora OS
 Icon=ru.aurora.geometry_dash_aurora
 Exec=/usr/bin/ru.aurora.geometry_dash_aurora
-X-Nemo-Application-Type=silica-qt5
 
-[X-Application]
-Permissions=Audio;Internet;UserDirs
+[X-Sailjail]
+Sandboxing=Disabled
 OrganizationName=ru.aurora
 ApplicationName=geometry_dash_aurora

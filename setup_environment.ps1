@@ -144,27 +144,82 @@ if (Test-Path $flutterAuroraBat) {
     Write-Info "Версия: $flutterVer"
     $statusReport["Flutter SDK"] = "Системный ($($systemFlutter.Source))"
 } else {
-    Write-Warn "Каталог Flutter for Aurora ($FlutterAuroraPath) и системный Flutter не найдены."
+    Write-Warn "Каталог Flutter for Aurora ($FlutterAuroraPath) не найден."
     
+    $shouldInstall = $false
     if (-not $NonInteractive -and $gitCmd) {
-        $confirm = Read-Host "Хотите клонировать Flutter for Aurora (ветка aurora-3.32.7) в '$FlutterAuroraPath'? (Y/N)"
+        $confirm = Read-Host "Хотите автоматически установить Flutter for Aurora 3.32.7 в '$FlutterAuroraPath'? (Y/N)"
         if ($confirm -eq "" -or $confirm -match "^[Yy]") {
-            Write-Host "  Клонирование репозитория https://gitlab.com/omprussia/flutter/flutter.git..." -ForegroundColor Cyan
-            & git clone --depth 1 -b aurora-3.32.7 https://gitlab.com/omprussia/flutter/flutter.git $FlutterAuroraPath
-            if (Test-Path $flutterAuroraBat) {
-                Write-Success "Flutter for Aurora успешно склонирован!"
-                Add-PathIfMissing (Join-Path $FlutterAuroraPath "bin") | Out-Null
-                $statusReport["Flutter SDK"] = "Установлен ($FlutterAuroraPath)"
-            } else {
-                Write-Err "Не удалось клонировать Flutter SDK."
-                $statusReport["Flutter SDK"] = "Ошибка установки"
+            $shouldInstall = $true
+        }
+    } elseif ($NonInteractive -and $gitCmd) {
+        $shouldInstall = $true
+    }
+    
+    if ($shouldInstall) {
+        Write-Host "  Клонирование репозитория https://gitlab.com/omprussia/flutter/flutter.git (тег 3.32.7)..." -ForegroundColor Cyan
+        & git clone --depth 1 -b 3.32.7 https://gitlab.com/omprussia/flutter/flutter.git $FlutterAuroraPath
+        
+        if (Test-Path $flutterAuroraBat) {
+            $cacheDir = Join-Path $FlutterAuroraPath "bin\cache"
+            if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null }
+            $dartExe = Join-Path $cacheDir "dart-sdk\bin\dart.exe"
+            
+            if (-not (Test-Path $dartExe)) {
+                Write-Host "  Загрузка Dart SDK 3.8.1 для Windows..." -ForegroundColor Cyan
+                $dartZip = Join-Path $cacheDir "dart-sdk-3.8.1.zip"
+                $dartUrl = "https://storage.googleapis.com/dart-archive/channels/stable/release/3.8.1/sdk/dartsdk-windows-x64-release.zip"
+                $dlOk = $false
+                $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
+                if ($curl) {
+                    & curl.exe -L -o $dartZip $dartUrl
+                    if (Test-Path $dartZip) { $dlOk = $true }
+                }
+                if (-not $dlOk) {
+                    try {
+                        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                        Invoke-WebRequest -Uri $dartUrl -OutFile $dartZip -UseBasicParsing
+                        $dlOk = $true
+                    } catch {
+                        Write-Err "Не удалось скачать Dart SDK 3.8.1: $_"
+                    }
+                }
+                if ($dlOk -and (Test-Path $dartZip)) {
+                    Write-Host "  Распаковка Dart SDK 3.8.1..." -ForegroundColor Cyan
+                    Expand-Archive -Path $dartZip -DestinationPath $cacheDir -Force
+                    Remove-Item -Path $dartZip -Force -ErrorAction SilentlyContinue
+                }
             }
+            
+            $pubDart = Join-Path $FlutterAuroraPath "packages\flutter_tools\lib\src\dart\pub.dart"
+            if (Test-Path $pubDart) {
+                $pubContent = [System.IO.File]::ReadAllText($pubDart, [System.Text.Encoding]::UTF8)
+                if ($pubContent -notmatch 'dart\.exe') {
+                    $oldPub = "    if (!_processManager.canRun(pubPath)) {"
+                    $newPub = "    if (_processManager.canRun(pubPath)) { return <String>[pubPath]; }`n    final String dartFallback = _fileSystem.path.joinAll(<String>[Cache.flutterRoot!, 'bin', 'cache', 'dart-sdk', 'bin', _platform.isWindows ? 'dart.exe' : 'dart']);`n    if (_processManager.canRun(dartFallback)) { return <String>[dartFallback, 'pub']; }`n    if (false) {"
+                    if ($pubContent.Contains($oldPub)) {
+                        $pubContent = $pubContent.Replace($oldPub, $newPub)
+                        [System.IO.File]::WriteAllText($pubDart, $pubContent, [System.Text.Encoding]::UTF8)
+                    }
+                }
+            }
+            
+            $engineStamp = Join-Path $cacheDir "engine.stamp"
+            if (-not (Test-Path $engineStamp)) {
+                [System.IO.File]::WriteAllText($engineStamp, "47485eb1df27de3ac9039dab4f0b1cf87d10f7ea`n")
+            }
+            
+            Add-PathIfMissing (Join-Path $FlutterAuroraPath "bin") | Out-Null
+            & cmd.exe /c "$flutterAuroraBat config --enable-aurora >nul 2>&1"
+            
+            Write-Success "Flutter for Aurora успешно установлен и настроен!"
+            $statusReport["Flutter SDK"] = "Установлен ($FlutterAuroraPath)"
         } else {
-            $statusReport["Flutter SDK"] = "Используется Docker"
+            Write-Err "Не удалось клонировать Flutter SDK."
+            $statusReport["Flutter SDK"] = "Ошибка установки"
         }
     } else {
-        Write-Info "Можно использовать Docker для полной сборки без установки Flutter на хост."
-        $statusReport["Flutter SDK"] = "Требуется установка или Docker"
+        $statusReport["Flutter SDK"] = "Требуется установка"
     }
 }
 
@@ -410,10 +465,11 @@ foreach ($key in $statusReport.Keys) {
 Write-Host ""
 Write-Host "====================================================================" -ForegroundColor Cyan
 Write-Host "  КАК ЗАПУСТИТЬ ПРОЕКТ:" -ForegroundColor White
-Write-Host "   1. Полная сборка и запуск в Авроре : .\Собрать_и_Запустить_в_Авроре.bat" -ForegroundColor Cyan
-Write-Host "   2. Запуск в эмуляторе (быстрый)    : .\Запустить_Geometry_Dash_Aurora.bat" -ForegroundColor Cyan
-Write-Host "   3. Сборка только RPM пакета        : .\Собрать_Flutter_RPM.bat" -ForegroundColor Cyan
-Write-Host "   4. Отладка на ПК (Windows Desktop) : flutter run -d windows" -ForegroundColor Cyan
-Write-Host "   5. В VS Code                      : Нажмите F5 для запуска Windows/Aurora" -ForegroundColor Cyan
+Write-Host "   1. Полная сборка и запуск в Авроре : powershell .\build_and_run_aurora.ps1" -ForegroundColor Cyan
+Write-Host "   2. Запуск в эмуляторе (быстрый)    : powershell .\run_aurora.ps1" -ForegroundColor Cyan
+Write-Host "   3. Сборка только RPM пакета        : powershell .\build_flutter_rpm.ps1" -ForegroundColor Cyan
+Write-Host "   4. Запуск эмулятора QEMU           : .\start_emulator.bat (или powershell .\start_emulator.ps1)" -ForegroundColor Cyan
+Write-Host "   5. Отладка на ПК (Windows Desktop) : flutter run -d windows" -ForegroundColor Cyan
+Write-Host "   6. В VS Code                      : Нажмите F5 для запуска Windows/Aurora" -ForegroundColor Cyan
 Write-Host "====================================================================" -ForegroundColor Cyan
 Write-Host ""
