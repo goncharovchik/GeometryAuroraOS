@@ -20,7 +20,7 @@
 
 1. Склонируйте репозиторий:
    ```cmd
-   git clone <URL_РЕПОЗИТОРИЯ> game_aurora
+   git clone https://github.com/goncharovchik/GeometryAuroraOS game_aurora
    cd game_aurora
    ```
 
