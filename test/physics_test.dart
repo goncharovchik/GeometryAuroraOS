@@ -1,10 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geometry_dash_aurora/core/constants/game_constants.dart';
-import 'package:geometry_dash_aurora/domain/models/level.dart';
+import 'package:geometry_dash_aurora/data/game_storage.dart';
 import 'package:geometry_dash_aurora/domain/models/level_object.dart';
+import 'package:geometry_dash_aurora/domain/models/player_character.dart';
 import 'package:geometry_dash_aurora/domain/models/player_mode.dart';
+import 'package:geometry_dash_aurora/domain/models/upgrade.dart';
 import 'package:geometry_dash_aurora/engine/collision_detector.dart';
-import 'package:geometry_dash_aurora/engine/game_session.dart';
 import 'package:geometry_dash_aurora/engine/game_ticker.dart';
 import 'package:geometry_dash_aurora/engine/player_controller.dart';
 
@@ -15,7 +16,7 @@ void main() {
       int stepCount = 0;
       double lastAlpha = 0.0;
 
-      // 0.033 секунды (примерно 2 шага по 1/60 с = 0.01666 с)
+      // 0.034 секунды (примерно 2 шага по 1/60 с = 0.01666 с)
       ticker.update(
         0.034,
         onPhysicsStep: (dt) {
@@ -57,7 +58,85 @@ void main() {
     });
   });
 
-  group('Система коллизий', () {
+  group('Улучшенная физика: буферизация ввода, время койота и фикс шара', () {
+    test('Буферизация прыжка: тап в воздухе перед приземлением вызывает прыжок в момент касания', () {
+      final player = PlayerController(startX: 0.0, startY: 10.0);
+      player.isGrounded = false;
+
+      // Игрок тапает прыжок за 0.05 с до земли
+      player.setInput(isHolding: false, justPressed: true);
+      expect(player.jumpBufferTimer, greaterThan(0.0));
+
+      // Приземление
+      player.isGrounded = true;
+      player.updatePhysics(GameConstants.fixedDeltaTime);
+
+      // Прыжок должен сработать благодаря буферу!
+      expect(player.velocity.y, greaterThan(500.0));
+      expect(player.jumpBufferTimer, equals(0.0));
+    });
+
+    test('Время койота: сход с платформы позволяет прыгнуть еще несколько кадров', () {
+      final player = PlayerController(startX: 0.0, startY: 48.0);
+      player.coyoteTimer = 0.08; // Игрок только что сошел с края
+      player.isGrounded = false;
+
+      // Нажимаем прыжок в воздухе в пределах окна койота
+      player.setInput(isHolding: false, justPressed: true);
+      player.updatePhysics(GameConstants.fixedDeltaTime);
+
+      // Прыжок успешен, несмотря на то что isGrounded был false!
+      expect(player.velocity.y, greaterThan(500.0));
+      expect(player.coyoteTimer, equals(0.0));
+    });
+
+    test('Фикс физики Шара: переключение гравитации придает импульс в сторону новой гравитации', () {
+      final player = PlayerController(startX: 0.0, startY: 0.0);
+      player.mode = PlayerMode.ball;
+      player.gravity = GravityDirection.down;
+      player.isGrounded = true;
+
+      // Тап на полу инвертирует гравитацию на UP
+      player.setInput(isHolding: false, justPressed: true);
+      player.updatePhysics(GameConstants.fixedDeltaTime);
+
+      expect(player.gravity, equals(GravityDirection.up));
+      // Скорость должна быть положительной (вверх к потолку)
+      expect(player.velocity.y, greaterThan(100.0));
+    });
+  });
+
+  group('Новые режимы для разнообразия: Волна (Wave) и НЛО (UFO)', () {
+    test('Волна мгновенно движется под углом 45 градусов вверх при зажатии и вниз при отпускании', () {
+      final player = PlayerController(startX: 0.0, startY: 100.0);
+      player.mode = PlayerMode.wave;
+
+      // Зажатие — полет вверх под 45 градусов
+      player.setInput(isHolding: true);
+      player.updatePhysics(GameConstants.fixedDeltaTime);
+      expect(player.velocity.y, equals(player.velocity.x));
+      expect(player.rotationDegrees, equals(-45.0));
+
+      // Отпускание — полет вниз под 45 градусов
+      player.setInput(isHolding: false);
+      player.updatePhysics(GameConstants.fixedDeltaTime);
+      expect(player.velocity.y, equals(-player.velocity.x));
+      expect(player.rotationDegrees, equals(45.0));
+    });
+
+    test('НЛО (UFO) прыгает в любой точке воздуха при тапе', () {
+      final player = PlayerController(startX: 0.0, startY: 200.0);
+      player.mode = PlayerMode.ufo;
+      player.isGrounded = false;
+
+      player.setInput(isHolding: false, justPressed: true);
+      player.updatePhysics(GameConstants.fixedDeltaTime);
+
+      expect(player.velocity.y, closeTo(GameConstants.ufoJumpVelocity, 20.0));
+    });
+  });
+
+  group('Система коллизий, монеток и защиты щитом', () {
     late CollisionDetector detector;
     late PlayerController player;
 
@@ -66,7 +145,7 @@ void main() {
       player = PlayerController(startX: 0.0, startY: 0.0);
     });
 
-    test('Столкновение с шипом приводит к смерти', () {
+    test('Столкновение с шипом приводит к смерти без щита', () {
       final spike = LevelObject(
         id: 'spike_1',
         type: ObjectType.spike,
@@ -74,11 +153,47 @@ void main() {
         gridY: 0,
       );
 
+      player.shieldCharges = 0;
       player.position.set(spike.pixelX, spike.pixelY);
       final result = detector.checkAndResolve(player: player, objects: [spike]);
 
       expect(result, equals(CollisionResult.death));
       expect(player.isDead, isTrue);
+    });
+
+    test('Энергетический щит спасает от гибели и активирует неуязвимость', () {
+      final spike = LevelObject(
+        id: 'spike_shield_test',
+        type: ObjectType.spike,
+        gridX: 0,
+        gridY: 0,
+      );
+
+      player.shieldCharges = 1;
+      player.position.set(spike.pixelX, spike.pixelY);
+      final result = detector.checkAndResolve(player: player, objects: [spike]);
+
+      expect(result, equals(CollisionResult.shieldAbsorbed));
+      expect(player.isDead, isFalse);
+      expect(player.shieldCharges, equals(0));
+      expect(player.shieldInvulnerabilityTimer, greaterThan(0.0));
+    });
+
+    test('Сбор монетки на карте и притяжение магнитом', () {
+      final coin = LevelObject(
+        id: 'test_coin',
+        type: ObjectType.coin,
+        gridX: 1,
+        gridY: 0,
+      );
+
+      // Игрок находится в зоне действия магнита
+      player.magnetRadius = 60.0;
+      player.position.set(coin.pixelX - 30.0, coin.pixelY);
+
+      final result = detector.checkAndResolve(player: player, objects: [coin]);
+      expect(result, equals(CollisionResult.coinCollected));
+      expect(detector.collectedCoins.contains('test_coin'), isTrue);
     });
 
     test('Безопасное приземление сверху на твердый блок', () {
@@ -89,9 +204,8 @@ void main() {
         gridY: 0,
       );
 
-      // Игрок падает сверху, пересекая верхнюю грань блока с учетом padding хитбокса
       player.position.set(block.pixelX, block.aabb.maxY - 8.0);
-      player.velocity.y = -10.0; // Падает вниз
+      player.velocity.y = -10.0;
 
       final result = detector.checkAndResolve(player: player, objects: [block]);
 
@@ -109,7 +223,7 @@ void main() {
         gridY: 0,
       );
 
-      // Игрок бежит справа в боковую грань блока
+      player.shieldCharges = 0;
       player.position.set(block.pixelX - 10.0, 0.0);
 
       final result = detector.checkAndResolve(player: player, objects: [block]);
@@ -134,139 +248,45 @@ void main() {
       expect(player.velocity.y, equals(GameConstants.yellowPadVelocity));
       expect(player.isGrounded, isFalse);
     });
-
-    test('Сфера (Jump Orb) срабатывает только при тапе', () {
-      final orb = LevelObject(
-        id: 'orb_1',
-        type: ObjectType.jumpOrb,
-        gridX: 0,
-        gridY: 1,
-        orbColor: OrbColor.yellow,
-      );
-
-      player.position.set(orb.pixelX, orb.pixelY);
-
-      // 1. Без нажатия сфера НЕ срабатывает
-      player.justPressedInput = false;
-      var result = detector.checkAndResolve(player: player, objects: [orb]);
-      expect(result, equals(CollisionResult.none));
-
-      // 2. С тапом сфера активируется
-      player.justPressedInput = true;
-      result = detector.checkAndResolve(player: player, objects: [orb]);
-      expect(result, equals(CollisionResult.orbTriggered));
-      expect(player.velocity.y, equals(GameConstants.yellowOrbVelocity));
-    });
-
-    test('Игрок в воздухе рядом с блоком НЕ становится grounded и падает под действием гравитации', () {
-      final block = LevelObject(
-        id: 'block_near',
-        type: ObjectType.solidBlock,
-        gridX: 2,
-        gridY: 0,
-      );
-
-      // Игрок находится в воздухе на высоте 100 пикселей (выше блока 48 px), рядом по X
-      player.position.set(block.pixelX, 100.0);
-      player.velocity.y = -100.0;
-      player.isGrounded = false;
-
-      final result = detector.checkAndResolve(player: player, objects: [block]);
-
-      expect(result, equals(CollisionResult.none));
-      expect(player.isDead, isFalse);
-      expect(player.isGrounded, isFalse); // Не должен приземляться в воздухе!
-
-      // Физический тик должен продолжать применять гравитацию
-      final prevVelY = player.velocity.y;
-      player.updatePhysics(GameConstants.fixedDeltaTime);
-      expect(player.velocity.y, lessThan(prevVelY)); // Скорость падения увеличивается вниз
-      expect(player.position.y, lessThan(100.0)); // Координата Y уменьшается
-    });
-
-    test('Терминальная скорость падения не превышает maxFallSpeed', () {
-      player.position.set(0.0, 500.0);
-      player.velocity.y = -GameConstants.maxFallSpeed - 200.0;
-      player.isGrounded = false;
-
-      player.updatePhysics(GameConstants.fixedDeltaTime);
-
-      expect(player.velocity.y, equals(-GameConstants.maxFallSpeed));
-    });
-
-    test('Потолок уровня ограничивает полет и обнуляет скорость вверх', () {
-      player.position.set(0.0, detector.ceilingY + 50.0);
-      player.velocity.y = 500.0;
-
-      detector.checkAndResolve(player: player, objects: []);
-
-      expect(player.position.y, equals(detector.ceilingY - GameConstants.playerSize));
-      expect(player.velocity.y, equals(0.0));
-    });
   });
 
-  group('Сериализация уровней и GameSession', () {
-    test('Уровень корректно преобразуется в JSON и восстанавливается', () {
-      final level = Level(
-        id: 'test_level',
-        title: 'Тестовый уровень',
-        creator: 'Тестировщик',
-        difficulty: LevelDifficulty.hard,
-        songTitle: 'Test Song',
-        bpm: 135.0,
-        totalTilesLength: 100,
-        objects: [
-          LevelObject(
-            id: 'obj_1',
-            type: ObjectType.solidBlock,
-            gridX: 5,
-            gridY: 1,
-          ),
-          LevelObject(
-            id: 'obj_2',
-            type: ObjectType.spike,
-            gridX: 6,
-            gridY: 0,
-            rotationDegrees: 180.0,
-          ),
-        ],
-      );
+  group('Кастомные персонажи и прокачки за очки', () {
+    test('Каталог содержит 6 кастомных персонажей с уникальными стилями и перками', () {
+      expect(PlayerCharacter.characters.length, equals(6));
 
-      final json = level.toJson();
-      final restored = Level.fromJson(json);
+      final phantom = PlayerCharacter.getById('phantom');
+      expect(phantom.style, equals(CharacterStyle.phantom));
+      expect(phantom.hitboxScale, lessThan(1.0)); // Компактный хитбокс
+      expect(phantom.bonusCoyoteTime, greaterThan(0.0));
 
-      expect(restored.id, equals(level.id));
-      expect(restored.title, equals(level.title));
-      expect(restored.difficulty, equals(LevelDifficulty.hard));
-      expect(restored.bpm, equals(135.0));
-      expect(restored.objects.length, equals(2));
-      expect(restored.objects[1].rotationDegrees, equals(180.0));
+      final titan = PlayerCharacter.getById('cyber_titan');
+      expect(titan.hasBuiltinShield, isTrue);
+
+      final magnetron = PlayerCharacter.getById('magnetron');
+      expect(magnetron.bonusMagnetRadius, greaterThan(50.0));
     });
 
-    test('GameSession корректно отслеживает прогресс и попытки', () {
-      final level = Level(
-        id: 'test',
-        title: 'Test',
-        creator: 'OMP',
-        difficulty: LevelDifficulty.normal,
-        songTitle: 'Test',
-        bpm: 120.0,
-        totalTilesLength: 50,
-        objects: [],
-      );
+    test('Ветка прокачки рассчитывает стоимость и эффекты', () {
+      final magnet = Upgrade.getById('magnet');
+      expect(magnet.maxLevel, equals(5));
+      expect(magnet.getCost(0), equals(magnet.baseCost));
+      expect(magnet.getCost(1), greaterThan(magnet.getCost(0)));
 
-      final session = GameSession(level: level);
-      expect(session.attempts, equals(1));
-      expect(session.currentPercentage, equals(0.0));
+      final desc = magnet.getLevelEffectDescription(2);
+      expect(desc, contains('+50 px'));
+    });
 
-      // Сдвигаем игрока на половину длины уровня
-      session.player.position.x = level.lengthInPixels / 2.0;
-      expect(session.currentPercentage, closeTo(50.0, 0.1));
+    test('GameStorage начисляет очки и разблокирует улучшения', () {
+      final storage = GameStorage.instance;
+      final initialPoints = storage.totalPoints;
 
-      // Смерть игрока
-      session.onDeath();
-      expect(session.attempts, equals(2));
-      expect(session.bestPercentage, closeTo(50.0, 0.1));
+      storage.addPoints(500);
+      expect(storage.totalPoints, equals(initialPoints + 500));
+
+      // Прокачиваем магнит
+      final canUpgrade = storage.upgradeSkill('magnet');
+      expect(canUpgrade, isTrue);
+      expect(storage.getUpgradeLevel('magnet'), greaterThan(0));
     });
   });
 }

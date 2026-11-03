@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'data/game_storage.dart';
 import 'presentation/main_menu_screen.dart';
+import 'presentation/widgets/landscape_enforcer.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Загружаем сохраненный прогресс, очки и персонажей
+  GameStorage.instance.load();
 
   // Фиксация ландшафтной ориентации экрана (стандарт для Geometry Dash)
   SystemChrome.setPreferredOrientations([
@@ -23,7 +28,7 @@ class GeometryDashApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Geometry Dash Aurora',
+      title: 'Абстракции',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -34,6 +39,11 @@ class GeometryDashApp extends StatelessWidget {
           surface: Color(0xFF140F30),
         ),
       ),
+      builder: (context, child) {
+        return LandscapeEnforcer(
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: const MainMenuScreen(),
     );
   }

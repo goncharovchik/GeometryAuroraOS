@@ -11,6 +11,8 @@ enum CollisionResult {
   padTriggered,
   orbTriggered,
   portalTriggered,
+  coinCollected,
+  shieldAbsorbed,
 }
 
 enum _BlockResolution {
@@ -25,6 +27,12 @@ class CollisionDetector {
 
   // Чтобы орб не срабатывал дважды за одно нажатие
   final Set<String> _activatedOrbs = {};
+  // Чтобы монетки не собирались повторно за одну попытку
+  final Set<String> _collectedCoins = {};
+
+  String? lastCollectedCoinId;
+
+  Set<String> get collectedCoins => Set.unmodifiable(_collectedCoins);
 
   CollisionDetector({
     this.groundY = 0.0,
@@ -33,6 +41,8 @@ class CollisionDetector {
 
   void reset() {
     _activatedOrbs.clear();
+    _collectedCoins.clear();
+    lastCollectedCoinId = null;
   }
 
   /// Проверяет и разрешает коллизии игрока с окружением
@@ -47,6 +57,14 @@ class CollisionDetector {
 
     // 1. Проверка коллизий с полом и потолком уровня
     final maxAllowedY = ceilingY - GameConstants.playerSize;
+
+    // Режим Волны: удар о пол или потолок смертелен (как в оригинальном GD)
+    if (player.mode == PlayerMode.wave) {
+      if (player.position.y <= groundY || player.position.y >= maxAllowedY) {
+        final lethal = _handleLethalImpact(player);
+        if (lethal != CollisionResult.none) return lethal;
+      }
+    }
 
     if (player.gravity == GravityDirection.down) {
       if (player.position.y <= groundY) {
@@ -91,7 +109,7 @@ class CollisionDetector {
     // Фильтруем объекты рядом с игроком для оптимизации (broad-phase)
     final nearbyObjects = objects.where((obj) {
       final dx = (obj.pixelX - player.position.x).abs();
-      return dx < GameConstants.tileSize * 3.0;
+      return dx < GameConstants.tileSize * 3.5;
     });
 
     for (final obj in nearbyObjects) {
@@ -99,8 +117,8 @@ class CollisionDetector {
         case ObjectType.solidBlock:
           final res = _resolveBlockCollision(player, obj, gSign);
           if (res == _BlockResolution.death) {
-            player.isDead = true;
-            return CollisionResult.death;
+            final lethal = _handleLethalImpact(player);
+            if (lethal != CollisionResult.none) return lethal;
           } else if (res == _BlockResolution.landed) {
             groundedThisFrame = true;
           }
@@ -109,8 +127,8 @@ class CollisionDetector {
         case ObjectType.spike:
         case ObjectType.hangingSpike:
           if (obj.spikeHitbox.intersectsAABB(player.hitbox)) {
-            player.isDead = true;
-            return CollisionResult.death;
+            final lethal = _handleLethalImpact(player);
+            if (lethal != CollisionResult.none) return lethal;
           }
           break;
 
@@ -136,9 +154,11 @@ class CollisionDetector {
           final distSq = (orbCenter - playerCenter).lengthSquared;
 
           if (distSq <= GameConstants.orbActivationRadius * GameConstants.orbActivationRadius) {
-            // Орб срабатывает только при тапе
-            if (player.justPressedInput && !_activatedOrbs.contains(obj.id)) {
+            // Орб срабатывает при тапе или если зажата буферизация
+            final wantsOrb = player.justPressedInput || player.jumpBufferTimer > 0.0;
+            if (wantsOrb && !_activatedOrbs.contains(obj.id)) {
               _activatedOrbs.add(obj.id);
+              player.jumpBufferTimer = 0.0;
               final orbVel = _getOrbVelocity(obj.orbColor);
               player.applyOrbJump(orbVel);
               player.isGrounded = false;
@@ -177,15 +197,52 @@ class CollisionDetector {
           break;
 
         case ObjectType.coin:
-          // Сбор секретной монетки
+          if (!_collectedCoins.contains(obj.id)) {
+            final coinCenter = Vector2D(
+              obj.pixelX + GameConstants.tileSize / 2.0,
+              obj.pixelY + GameConstants.tileSize / 2.0,
+            );
+            final playerCenter = Vector2D(
+              player.position.x + GameConstants.playerSize / 2.0,
+              player.position.y + GameConstants.playerSize / 2.0,
+            );
+            final dist = (coinCenter - playerCenter).length;
+            final pickupThreshold = player.magnetRadius + GameConstants.coinCollisionRadius;
+
+            if (dist <= pickupThreshold) {
+              _collectedCoins.add(obj.id);
+              lastCollectedCoinId = obj.id;
+              return CollisionResult.coinCollected;
+            }
+          }
           break;
       }
     }
 
-    // Обновляем статус заземления персонажа
+    // Обновляем статус заземления персонажа и таймер койота
+    if (groundedThisFrame) {
+      player.coyoteTimer = player.effectiveCoyoteDuration;
+    }
     player.isGrounded = groundedThisFrame;
 
     return CollisionResult.none;
+  }
+
+  /// Обработка смертельного столкновения с защитой энергощита
+  CollisionResult _handleLethalImpact(PlayerController player) {
+    if (player.shieldInvulnerabilityTimer > 0.0) {
+      // Игрок находится под действием временной неуязвимости после срабатывания щита
+      return CollisionResult.none;
+    }
+    if (player.shieldCharges > 0) {
+      player.shieldCharges--;
+      player.shieldInvulnerabilityTimer = 1.0;
+      // Импульс отскока для предотвращения немедленного повторного касания
+      player.velocity.y = 420.0 * player.gravity.sign;
+      return CollisionResult.shieldAbsorbed;
+    }
+    player.isDead = true;
+    return CollisionResult.death;
   }
 
   /// Обработка блока: приземление сверху = хорошо, удар о грань или снизу = Смерть!
@@ -195,6 +252,14 @@ class CollisionDetector {
     double gSign,
   ) {
     final blockBox = block.aabb;
+
+    // В режиме волны любой контакт с блоком смертелен
+    if (player.mode == PlayerMode.wave) {
+      if (player.hitbox.intersects(blockBox)) {
+        return _BlockResolution.death;
+      }
+      return _BlockResolution.none;
+    }
 
     // 1. Проверяем наличие горизонтального пересечения
     final playerLeft = player.position.x + GameConstants.playerHitboxPadding;

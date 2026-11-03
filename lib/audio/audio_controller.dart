@@ -58,7 +58,7 @@ class AudioController extends ChangeNotifier {
   // Звуковые эффекты
   void playJumpSfx() {
     if (isMuted) return;
-    // SFX триггер (в нативной сборке под Аврору вызывает audioplayers_aurora)
+    // SFX триггер прыжка
   }
 
   void playDeathSfx() {
@@ -74,5 +74,20 @@ class AudioController extends ChangeNotifier {
   void playWinSfx() {
     if (isMuted) return;
     // SFX победы
+  }
+
+  void playCoinSfx() {
+    if (isMuted) return;
+    // SFX сбора очков/монетки
+  }
+
+  void playShieldSfx() {
+    if (isMuted) return;
+    // SFX поглощения удара щитом
+  }
+
+  void playUpgradeSfx() {
+    if (isMuted) return;
+    // SFX успешной прокачки
   }
 }

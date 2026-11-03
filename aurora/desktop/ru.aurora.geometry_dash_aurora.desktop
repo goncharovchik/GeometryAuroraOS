@@ -1,11 +1,26 @@
 [Desktop Entry]
 Type=Application
-Name=Geometry Dash
-Comment=Geometry Dash Flutter rhythm platformer for Aurora OS
+Name=Абстракции
+Name[ru]=Абстракции
+Name[en]=Abstractions (Geometry Dash)
+Comment=Ритм-платформер «Абстракции» (Geometry Dash) для ОС Аврора
+Comment[ru]=Ритм-платформер «Абстракции» (Geometry Dash) для ОС Аврора
+Comment[en]=Geometry Dash rhythm platformer for Aurora OS
 Icon=ru.aurora.geometry_dash_aurora
 Exec=/usr/bin/ru.aurora.geometry_dash_aurora
+X-Nemomobile-Orientations=Landscape;LandscapeInverted
+Orientation=Landscape
+SmallScreenOrientation=Landscape;LandscapeInverted
+MediumScreenOrientation=Landscape;LandscapeInverted
+ExtraLargeScreenOrientation=Landscape;LandscapeInverted
 
 [X-Sailjail]
 Sandboxing=Disabled
 OrganizationName=ru.aurora
 ApplicationName=geometry_dash_aurora
+
+[X-Aurora-Application]
+SmallScreenOrientation=Landscape;LandscapeInverted
+MediumScreenOrientation=Landscape;LandscapeInverted
+ExtraLargeScreenOrientation=Landscape;LandscapeInverted
+Orientation=Landscape

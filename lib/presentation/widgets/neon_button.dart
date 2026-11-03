@@ -115,32 +115,38 @@ class _NeonButtonState extends State<NeonButton> with SingleTickerProviderStateM
           ),
           child: Center(
             child: widget.child ??
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.icon != null) ...[
-                      Icon(
-                        widget.icon,
-                        color: widget.textColor ?? Colors.black,
-                        size: 26,
-                      ),
-                      if (widget.text != null) const SizedBox(width: 8),
-                    ],
-                    if (widget.text != null)
-                      Text(
-                        widget.text!,
-                        style: TextStyle(
-                          color: widget.textColor ?? Colors.black,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2.0,
-                          shadows: widget.textColor == Colors.white
-                              ? const [Shadow(color: Colors.black, blurRadius: 4)]
-                              : null,
-                        ),
-                      ),
-                  ],
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.icon != null) ...[
+                          Icon(
+                            widget.icon,
+                            color: widget.textColor ?? Colors.black,
+                            size: 26,
+                          ),
+                          if (widget.text != null) const SizedBox(width: 8),
+                        ],
+                        if (widget.text != null)
+                          Text(
+                            widget.text!,
+                            style: TextStyle(
+                              color: widget.textColor ?? Colors.black,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2.0,
+                              shadows: widget.textColor == Colors.white
+                                  ? const [Shadow(color: Colors.black, blurRadius: 4)]
+                                  : null,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
           ),
         ),

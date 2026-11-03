@@ -72,8 +72,10 @@ if (-not $ready) {
 # Шаг 4. Установка RPM и запуск игры
 Write-Host "[4/4] Установка Flutter RPM пакета и запуск игры в Авроре..." -ForegroundColor Green
 
-# 1. Включение дисплея и разблокировка экрана
+# 1. Включение дисплея, разблокировка экрана и фиксация альбомной ориентации (Landscape)
 & ssh -p 2223 -i $keyPath -o StrictHostKeyChecking=no root@127.0.0.1 "dbus-send --system --type=method_call --dest=com.nokia.mce /com/nokia/mce/request com.nokia.mce.request.req_display_state_on; dbus-send --system --type=method_call --dest=com.nokia.mce /com/nokia/mce/request com.nokia.mce.request.req_tklock_mode string:'unlocked'" 2>$null
+$orientCmd = "dconf write /desktop/sailfish/silica/orientation_lock `"'landscape'`""
+& ssh -p 2223 -i $keyPath -o StrictHostKeyChecking=no defaultuser@127.0.0.1 $orientCmd 2>$null
 
 # 2. Установка RPM пакета в систему Авроры (с флагом --noplugins для обхода проверки подписи TSM)
 $installOutput = & ssh -p 2223 -i $keyPath -o StrictHostKeyChecking=no root@127.0.0.1 "rpm -ivh --force --noplugins /etc/mersdk/share/ru.aurora.geometry_dash_aurora-1.0.0-1.x86_64.rpm; update-desktop-database; gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true"

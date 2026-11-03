@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../audio/audio_controller.dart';
+import '../data/game_storage.dart';
 import 'widgets/animated_game_background.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -69,6 +70,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
                   children: [
+                    // Раздел Ориентации экрана
+                    _buildCard(
+                      title: 'ЭКРАН И ОРИЕНТАЦИЯ',
+                      icon: Icons.screen_rotation_rounded,
+                      accentColor: const Color(0xFF00E5FF),
+                      children: [
+                        AnimatedBuilder(
+                          animation: GameStorage.instance,
+                          builder: (context, _) {
+                            return SwitchListTile(
+                              title: const Text(
+                                'Поворот экрана на 180°',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Text(
+                                GameStorage.instance.flipLandscape
+                                    ? 'Режим: Landscape Right (поворот вправо)'
+                                    : 'Режим: Landscape Left (поворот влево, стандарт)',
+                                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                              ),
+                              value: GameStorage.instance.flipLandscape,
+                              activeColor: const Color(0xFF00E5FF),
+                              secondary: const Icon(Icons.sync_alt_rounded, color: Color(0xFF00E5FF)),
+                              onChanged: (val) {
+                                GameStorage.instance.toggleFlipLandscape();
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 18),
+
                     // Раздел Аудио и калибровки
                     _buildCard(
                       title: 'АУДИО И СИНХРОНИЗАЦИЯ',

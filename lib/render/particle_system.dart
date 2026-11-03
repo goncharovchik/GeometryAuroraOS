@@ -28,7 +28,7 @@ class Particle {
   void update(double dt) {
     position.x += velocity.x * dt;
     position.y += velocity.y * dt;
-    velocity.y -= 800.0 * dt; // Легкая гравитация для осколков
+    velocity.y -= 750.0 * dt; // Легкая гравитация для осколков
     rotation += rotationSpeed * dt;
     life -= dt;
   }
@@ -86,6 +86,48 @@ class ParticleSystem {
           size: 4.0 + _random.nextDouble() * 4.0,
           color: color,
           maxLife: 0.35,
+        ),
+      );
+    }
+  }
+
+  /// Эффект сбора монетки/очков (золотистые искры и звездочки)
+  void spawnCoinCollect(Vector2D center) {
+    for (int i = 0; i < 20; i++) {
+      final angle = _random.nextDouble() * math.pi * 2.0;
+      final speed = 120.0 + _random.nextDouble() * 260.0;
+      final isGold = _random.nextBool();
+
+      _particles.add(
+        Particle(
+          position: Vector2D.copy(center),
+          velocity: Vector2D(math.cos(angle) * speed, math.sin(angle) * speed),
+          size: 5.0 + _random.nextDouble() * 6.0,
+          color: isGold ? const Color(0xFFFFD700) : const Color(0xFF00FFFF),
+          maxLife: 0.5 + _random.nextDouble() * 0.3,
+          rotation: _random.nextDouble() * math.pi * 2.0,
+          rotationSpeed: (_random.nextDouble() - 0.5) * 14.0,
+        ),
+      );
+    }
+  }
+
+  /// Эффект поглощения удара энергощитом (бирюзово-белая импульсная вспышка)
+  void spawnShieldAbsorb(Vector2D center) {
+    triggerScreenShake(8.0, 0.25);
+    for (int i = 0; i < 28; i++) {
+      final angle = _random.nextDouble() * math.pi * 2.0;
+      final speed = 200.0 + _random.nextDouble() * 350.0;
+
+      _particles.add(
+        Particle(
+          position: Vector2D.copy(center),
+          velocity: Vector2D(math.cos(angle) * speed, math.sin(angle) * speed),
+          size: 6.0 + _random.nextDouble() * 6.0,
+          color: _random.nextBool() ? const Color(0xFF00E5FF) : const Color(0xFFFFFFFF),
+          maxLife: 0.45,
+          rotation: _random.nextDouble() * math.pi * 2.0,
+          rotationSpeed: (_random.nextDouble() - 0.5) * 10.0,
         ),
       );
     }

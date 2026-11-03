@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../audio/audio_controller.dart';
+import '../data/game_storage.dart';
 import '../data/sample_levels.dart';
 import '../domain/models/level.dart';
 import 'game_screen.dart';
@@ -51,7 +52,10 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
           playerColor2: widget.playerColor2,
         ),
       ),
-    );
+    ).then((_) {
+      // Обновляем рекорды при возврате
+      if (mounted) setState(() {});
+    });
   }
 
   void _previousPage() {
@@ -230,10 +234,14 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
   }
 
   Widget _buildLevelCard(Level level) {
+    final storage = GameStorage.instance;
+    final bestPercent = storage.getBestPercent(level.id);
+    final coinsCollected = storage.getCoinsCollected(level.id);
+
     return Center(
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0),
-        padding: const EdgeInsets.all(20.0),
+        margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         decoration: BoxDecoration(
           color: const Color(0xFF140E2E).withOpacity(0.92),
           borderRadius: BorderRadius.circular(26),
@@ -251,9 +259,17 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
             ),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: 440,
+                height: 290,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
             // Шапка карточки: Бейдж сложности, Звезды, Монетки
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -264,10 +280,12 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                   size: 58.0,
                 ),
 
+                const SizedBox(width: 10),
                 // Название сложности и звезды
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                       decoration: BoxDecoration(
@@ -296,20 +314,30 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                       ),
                     ),
                   ],
+                  ),
                 ),
+                const SizedBox(width: 8),
 
-                // Секретные монетки (Secret Coins)
+                // Монетки
                 Row(
                   children: List.generate(3, (i) {
+                    final hasCoin = coinsCollected > i;
                     return Container(
                       margin: const EdgeInsets.symmetric(horizontal: 3),
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.black38,
-                        border: Border.all(color: Colors.amber.withOpacity(0.6), width: 1.5),
+                        color: hasCoin ? Colors.amber.withOpacity(0.2) : Colors.black38,
+                        border: Border.all(
+                          color: hasCoin ? Colors.amber : Colors.white24,
+                          width: 1.5,
+                        ),
                       ),
-                      child: const Icon(Icons.monetization_on, color: Colors.amber, size: 16),
+                      child: Icon(
+                        Icons.monetization_on,
+                        color: hasCoin ? Colors.amber : Colors.white24,
+                        size: 16,
+                      ),
                     );
                   }),
                 ),
@@ -321,6 +349,8 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
               children: [
                 Text(
                   level.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
@@ -335,6 +365,8 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'Автор: ${level.creator}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.75),
                     fontSize: 14,
@@ -376,9 +408,9 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const Text(
-                        '0%',
-                        style: TextStyle(
+                      Text(
+                        '${bestPercent.toInt()}%',
+                        style: const TextStyle(
                           color: Color(0xFF00FF66),
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
@@ -389,11 +421,11 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                 ),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: const LinearProgressIndicator(
-                    value: 0.0,
+                  child: LinearProgressIndicator(
+                    value: (bestPercent / 100.0).clamp(0.0, 1.0),
                     minHeight: 10,
                     backgroundColor: Colors.white12,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00FF66)),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00FF66)),
                   ),
                 ),
               ],
@@ -405,9 +437,13 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
               text: 'ИГРАТЬ',
               icon: Icons.play_arrow_rounded,
               primaryColor: const Color(0xFF00FF66),
-              height: 52,
+              height: 48,
             ),
-          ],
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

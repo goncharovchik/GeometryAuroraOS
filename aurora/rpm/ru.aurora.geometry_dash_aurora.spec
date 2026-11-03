@@ -1,5 +1,5 @@
 Name: ru.aurora.geometry_dash_aurora
-Summary: Geometry Dash Flutter rhythm platformer for Aurora OS
+Summary: Ритм-платформер «Абстракции» (Geometry Dash) для ОС Аврора
 Version: 1.0.0
 Release: 1
 License: Proprietary
@@ -18,7 +18,7 @@ BuildRequires: pkgconfig(wayland-egl)
 %global __requires_exclude ^(libflutter_engine.*|libaurora_embedder.*|libmaliit-glib.*)$
 
 %description
-Geometry Dash - динамичный ритм-платформер на Flutter для ОС Аврора.
+«Абстракции» (Geometry Dash) - динамичный ритм-платформер на Flutter для ОС Аврора.
 Чистый Flutter проект без использования QML.
 
 %prep

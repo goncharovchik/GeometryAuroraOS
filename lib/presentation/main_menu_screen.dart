@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../audio/audio_controller.dart';
 import '../core/constants/game_constants.dart';
+import '../data/game_storage.dart';
 import '../data/sample_levels.dart';
 import 'customize_screen.dart';
 import 'game_screen.dart';
@@ -20,6 +21,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
   late final AudioController _audioController;
   late final AnimationController _pulseController;
   late final AnimationController _cubeSpinController;
+  late final VoidCallback _storageListener;
 
   Color _playerColor1 = GameConstants.defaultPlayerColor1;
   Color _playerColor2 = GameConstants.defaultPlayerColor2;
@@ -28,6 +30,19 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
   void initState() {
     super.initState();
     _audioController = AudioController()..setBpm(128.0);
+
+    _playerColor1 = GameStorage.instance.playerColor1;
+    _playerColor2 = GameStorage.instance.playerColor2;
+
+    _storageListener = () {
+      if (mounted) {
+        setState(() {
+          _playerColor1 = GameStorage.instance.playerColor1;
+          _playerColor2 = GameStorage.instance.playerColor2;
+        });
+      }
+    };
+    GameStorage.instance.addListener(_storageListener);
 
     _pulseController = AnimationController(
       vsync: this,
@@ -42,6 +57,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
 
   @override
   void dispose() {
+    GameStorage.instance.removeListener(_storageListener);
     _pulseController.dispose();
     _cubeSpinController.dispose();
     _audioController.dispose();
@@ -64,6 +80,9 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    final storage = GameStorage.instance;
+    final char = storage.selectedCharacter;
+
     return Scaffold(
       backgroundColor: const Color(0xFF070417),
       body: AnimatedGameBackground(
@@ -73,85 +92,138 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
         child: SafeArea(
           child: Stack(
             children: [
-              // Верхняя панель: звук и команда
+              // Верхняя панель: баланс очков, звук и команда
               Positioned(
-                top: 14,
-                left: 20,
-                right: 20,
+                top: 10,
+                left: 16,
+                right: 16,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Чип команды "FAQ"
-                    Container(
+                    // Чип очков
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
                         color: const Color(0xFF140F30).withOpacity(0.85),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 1.5),
+                        border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.6), width: 1.5),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF00E5FF).withOpacity(0.2),
+                            color: const Color(0xFFFFD700).withOpacity(0.2),
                             blurRadius: 10,
                           ),
                         ],
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.terminal, color: Color(0xFF00E5FF), size: 16),
-                          SizedBox(width: 8),
+                          const Icon(Icons.stars_rounded, color: Color(0xFFFFD700), size: 18),
+                          const SizedBox(width: 8),
                           Text(
-                            'FAQ • ФИТ-262',
-                            style: TextStyle(
-                              color: Color(0xFF00E5FF),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                            '${storage.totalPoints} ОЧКОВ',
+                            style: const TextStyle(
+                              color: Color(0xFFFFD700),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
                               letterSpacing: 1.2,
                             ),
                           ),
                         ],
                       ),
                     ),
-
-                    // Быстрый переключатель звука
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _audioController.isMuted = !_audioController.isMuted;
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF140F30).withOpacity(0.85),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _audioController.isMuted ? Colors.white30 : const Color(0xFF00FF66),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (_audioController.isMuted ? Colors.transparent : const Color(0xFF00FF66)).withOpacity(0.3),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          _audioController.isMuted ? Icons.volume_off : Icons.volume_up,
-                          color: _audioController.isMuted ? Colors.white54 : const Color(0xFF00FF66),
-                          size: 20,
-                        ),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Чип команды "FAQ"
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF140F30).withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF00E5FF).withOpacity(0.2),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.terminal, color: Color(0xFF00E5FF), size: 16),
+                              SizedBox(width: 8),
+                              Text(
+                                'FAQ • ФИТ-262',
+                                style: TextStyle(
+                                  color: Color(0xFF00E5FF),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+
+                        // Быстрый переключатель звука
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _audioController.isMuted = !_audioController.isMuted;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF140F30).withOpacity(0.85),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _audioController.isMuted ? Colors.white30 : const Color(0xFF00FF66),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (_audioController.isMuted ? Colors.transparent : const Color(0xFF00FF66)).withOpacity(0.3),
+                                  blurRadius: 10,
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _audioController.isMuted ? Icons.volume_off : Icons.volume_up,
+                              color: _audioController.isMuted ? Colors.white54 : const Color(0xFF00FF66),
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
 
-              // Центр: Логотип, Play и кнопки меню
+              // Центр: Логотип, Play и кнопки меню (адаптивно масштабируется для любого экрана без overflow)
               Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: math.max(640.0, constraints.maxWidth),
+                        height: math.max(380.0, constraints.maxHeight),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
                     const SizedBox(height: 10),
 
                     // Логотип Geometry Dash
@@ -202,7 +274,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
                                   ],
                                 ),
                                 child: const Text(
-                                  'AURORA OS EDITION',
+                                  '«АБСТРАКЦИИ» • AURORA OS EDITION',
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w900,
@@ -220,7 +292,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
                     // Большая кнопка PLAY с пульсирующими кольцами
                     _buildPlayButton(),
 
-                    // Навигационные кнопки: Уровни, Скины, Настройки
+                    // Навигационные кнопки: Уровни, Мастерская (Скины/Прокачка), Настройки
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -242,8 +314,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
                         ),
                         const SizedBox(width: 28),
                         _buildTactileMenuButton(
-                          icon: Icons.palette_rounded,
-                          label: 'СКИНЫ',
+                          icon: Icons.build_circle_rounded,
+                          label: 'МАСТЕРСКАЯ',
                           color: const Color(0xFFFF0055),
                           onTap: () {
                             Navigator.of(context).push(
@@ -278,7 +350,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
 
                     // Подвал с инфо о платформе
                     Text(
-                      'v1.0.0 • 60 FPS • Aurora OS Native Engine',
+                      'v1.0.0 • 60 FPS • Aurora OS Native Engine • Custom Physics',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.35),
                         fontSize: 11,
@@ -287,12 +359,19 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
                     ),
                   ],
                 ),
+                      ),
+                    );
+                  },
+                ),
               ),
 
-              // Правый нижний угол: плавающий интерактивный мини-кубик игрока
+              // Правый нижний угол: плавающий интерактивный мини-кубик игрока с именем персонажа
               Positioned(
-                bottom: 16,
-                right: 20,
+                bottom: 10,
+                right: 14,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.bottomRight,
                 child: GestureDetector(
                   onTap: () {
                     Navigator.of(context).push(
@@ -310,29 +389,54 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
                     animation: _cubeSpinController,
                     builder: (context, _) {
                       return Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF140F30).withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white24, width: 1.2),
+                          color: const Color(0xFF140F30).withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: _playerColor1.withOpacity(0.7), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _playerColor1.withOpacity(0.2),
+                              blurRadius: 10,
+                            ),
+                          ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Transform.rotate(
                               angle: math.sin(_cubeSpinController.value * math.pi * 2) * 0.2,
-                              child: _buildMiniPlayerPreview(32.0),
+                              child: _buildMiniPlayerPreview(30.0),
                             ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Скин',
-                              style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  char.name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  'Прокачка',
+                                  style: TextStyle(
+                                    color: _playerColor1,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       );
                     },
                   ),
+                ),
                 ),
               ),
             ],
@@ -349,66 +453,67 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
         final ringExpand = _pulseController.value * 12.0;
         final ringOpacity = (1.0 - _pulseController.value * 0.6).clamp(0.0, 1.0);
 
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            // Внешнее пульсирующее кольцо
-            Container(
-              width: 150 + ringExpand * 2,
-              height: 150 + ringExpand * 2,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: const Color(0xFF00FF66).withOpacity(0.3 * ringOpacity),
-                  width: 3,
+        return GestureDetector(
+          onTap: _quickPlay,
+          child: SizedBox(
+            width: 150,
+            height: 150,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Внешнее пульсирующее кольцо
+                Container(
+                  width: 125 + ringExpand,
+                  height: 125 + ringExpand,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF00FF66).withOpacity(ringOpacity * 0.6),
+                      width: 2.0,
+                    ),
+                  ),
                 ),
-              ),
-            ),
 
-            // Сама кнопка PLAY
-            GestureDetector(
-              onTap: _quickPlay,
-              child: Container(
-                width: 140,
-                height: 140,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const RadialGradient(
-                    center: Alignment(-0.2, -0.3),
-                    radius: 0.9,
-                    colors: [
-                      Color(0xFF55FF88),
-                      Color(0xFF00CC44),
-                      Color(0xFF00882B),
+                // Основная кнопка
+                Container(
+                  width: 110,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const RadialGradient(
+                      colors: [
+                        Color(0xFF00FF66),
+                        Color(0xFF00B044),
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF00FF66).withOpacity(0.55),
+                        blurRadius: 26,
+                        spreadRadius: 2,
+                      ),
+                      const BoxShadow(
+                        color: Colors.black54,
+                        blurRadius: 10,
+                        offset: Offset(0, 6),
+                      ),
                     ],
+                    border: Border.all(color: Colors.white, width: 3),
                   ),
-                  border: Border.all(color: Colors.white, width: 4.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00FF66).withOpacity(0.65),
-                      blurRadius: 36,
-                      spreadRadius: 6,
-                    ),
-                    const BoxShadow(
-                      color: Colors.black54,
-                      blurRadius: 14,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(left: 8.0),
-                    child: Icon(
-                      Icons.play_arrow_rounded,
-                      color: Colors.white,
-                      size: 92,
+                  child: const Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: 6.0),
+                      child: Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.black87,
+                        size: 64,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -426,17 +531,17 @@ class _MainMenuScreenState extends State<MainMenuScreen> with TickerProviderStat
         GestureDetector(
           onTap: onTap,
           child: Container(
-            width: 72,
-            height: 72,
+            width: 76,
+            height: 76,
             decoration: BoxDecoration(
-              color: const Color(0xFF140F30),
-              shape: BoxShape.circle,
-              border: Border.all(color: color, width: 2.8),
+              color: const Color(0xFF140F30).withOpacity(0.9),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: color, width: 2.2),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.45),
-                  blurRadius: 18,
-                  spreadRadius: 2,
+                  color: color.withOpacity(0.35),
+                  blurRadius: 16,
+                  spreadRadius: 1,
                 ),
                 const BoxShadow(
                   color: Colors.black45,

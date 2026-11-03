@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../audio/audio_controller.dart';
 import '../core/constants/game_constants.dart';
 import '../core/math/vector2d.dart';
+import '../data/game_storage.dart';
 import '../domain/models/level.dart';
 import '../engine/collision_detector.dart';
 import '../engine/game_session.dart';
@@ -45,6 +47,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   double _deathCooldownTimer = 0.0;
   final FocusNode _focusNode = FocusNode();
 
+  int _sessionCoinsCollected = 0;
+  int _sessionPointsEarned = 0;
+  String? _floatingPointsText;
+  double _floatingPointsTimer = 0.0;
+
   @override
   void initState() {
     super.initState();
@@ -79,12 +86,21 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     widget.audioController.update(dt);
     _particleSystem.update(dt);
 
+    if (_floatingPointsTimer > 0.0) {
+      _floatingPointsTimer -= dt;
+      if (_floatingPointsTimer <= 0.0) {
+        _floatingPointsText = null;
+      }
+    }
+
     if (_session.player.isDead) {
       _deathCooldownTimer -= dt;
       if (_deathCooldownTimer <= 0.0) {
         // Мгновенный респаун
         _session.restart();
         _particleSystem.clear();
+        _sessionCoinsCollected = 0;
+        _sessionPointsEarned = 0;
       }
       setState(() {});
       return;
@@ -105,9 +121,31 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           objects: widget.level.objects,
         );
 
-        if (collision == CollisionResult.death) {
+        if (collision == CollisionResult.coinCollected) {
+          widget.audioController.playCoinSfx();
+          final earned = (GameConstants.coinBasePoints * _session.player.scoreMultiplier).round();
+          _sessionCoinsCollected++;
+          _sessionPointsEarned += earned;
+          GameStorage.instance.addPoints(earned);
+
+          final center = Vector2D(
+            _session.player.position.x + GameConstants.playerSize / 2.0,
+            _session.player.position.y + GameConstants.playerSize / 2.0,
+          );
+          _particleSystem.spawnCoinCollect(center);
+          _floatingPointsText = '+$earned 🪙';
+          _floatingPointsTimer = 0.85;
+        } else if (collision == CollisionResult.shieldAbsorbed) {
+          widget.audioController.playShieldSfx();
+          final center = Vector2D(
+            _session.player.position.x + GameConstants.playerSize / 2.0,
+            _session.player.position.y + GameConstants.playerSize / 2.0,
+          );
+          _particleSystem.spawnShieldAbsorb(center);
+        } else if (collision == CollisionResult.death) {
           widget.audioController.playDeathSfx();
           _session.onDeath();
+          GameStorage.instance.recordBestPercent(widget.level.id, _session.currentPercentage);
           _deathCooldownTimer = 0.65; // Небольшая пауза для эффекта взрыва
 
           final center = Vector2D(
@@ -121,11 +159,19 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           );
         } else if (collision == CollisionResult.win) {
           widget.audioController.playWinSfx();
+          GameStorage.instance.recordBestPercent(widget.level.id, 100.0);
+          GameStorage.instance.recordCoinsCollected(widget.level.id, _sessionCoinsCollected);
+          final winBonus = widget.level.difficulty.stars * 25;
+          GameStorage.instance.addPoints(winBonus);
         }
 
         if (_session.player.position.x >= widget.level.lengthInPixels && !_session.player.hasWon) {
           _session.player.hasWon = true;
           widget.audioController.playWinSfx();
+          GameStorage.instance.recordBestPercent(widget.level.id, 100.0);
+          GameStorage.instance.recordCoinsCollected(widget.level.id, _sessionCoinsCollected);
+          final winBonus = widget.level.difficulty.stars * 25;
+          GameStorage.instance.addPoints(winBonus);
           final center = Vector2D(
             _session.player.position.x + GameConstants.playerSize / 2.0,
             _session.player.position.y + GameConstants.playerSize / 2.0,
@@ -148,7 +194,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         }
       },
       onRenderStep: (alpha) {
-        // Запрос перерисовки
         setState(() {});
       },
     );
@@ -185,6 +230,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       particleSystem: _particleSystem,
       dt: GameConstants.fixedDeltaTime,
     );
+
+    final character = GameStorage.instance.selectedCharacter;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -224,8 +271,47 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                   playerColor1: widget.playerColor1,
                   playerColor2: widget.playerColor2,
                   bpmPulse: widget.audioController.bpmPulse,
+                  characterStyle: character.style,
+                  collectedCoinIds: _session.collisionDetector.collectedCoins,
                 ),
               ),
+
+              // Всплывающий индикатор собранных очков
+              if (_floatingPointsText != null)
+                Positioned(
+                  top: 75,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: AnimatedOpacity(
+                      opacity: (_floatingPointsTimer / 0.85).clamp(0.0, 1.0),
+                      duration: const Duration(milliseconds: 150),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF140F30).withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFFFD700), width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFFD700).withOpacity(0.4),
+                              blurRadius: 16,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          _floatingPointsText!,
+                          style: const TextStyle(
+                            color: Color(0xFFFFD700),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
 
               // Верхний футуристичный HUD уровня
               Positioned(
@@ -255,22 +341,88 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                             ),
                           ),
                         ),
+                        const SizedBox(width: 8),
+
+                        // Счетчик собранных очков / монет
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF140F30).withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFFFD700), width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFFFD700).withOpacity(0.25),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.stars_rounded, color: Color(0xFFFFD700), size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                '+$_sessionPointsEarned',
+                                style: const TextStyle(
+                                  color: Color(0xFFFFD700),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Индикатор энергощита
+                        if (_session.player.shieldCharges > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00E5FF).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF00E5FF).withOpacity(0.3),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.shield_rounded, color: Color(0xFF00E5FF), size: 15),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${_session.player.shieldCharges}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF00E5FF),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
 
                         // Центральный прогресс-бар с бегущим значком куба
                         Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            padding: const EdgeInsets.symmetric(horizontal: 12.0),
                             child: LayoutBuilder(
                               builder: (context, constraints) {
                                 final barWidth = constraints.maxWidth;
                                 final progressRatio = (_session.currentPercentage / 100.0).clamp(0.0, 1.0);
-                                final cubeX = (barWidth - 20) * progressRatio;
+                                final maxCubeX = math.max(0.0, barWidth - 20);
+                                final cubeX = (maxCubeX * progressRatio).clamp(0.0, maxCubeX);
 
                                 return Stack(
                                   clipBehavior: Clip.none,
                                   alignment: Alignment.centerLeft,
                                   children: [
-                                    // Сам прогресс-бар
                                     Container(
                                       height: 12,
                                       decoration: BoxDecoration(
@@ -493,14 +645,17 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildWinOverlay(BuildContext context) {
+    final winBonus = widget.level.difficulty.stars * 25;
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
       child: Container(
         color: Colors.black.withOpacity(0.65),
         child: Center(
-          child: Container(
-            width: 400,
-            padding: const EdgeInsets.all(28.0),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Container(
+              width: 420,
+              padding: const EdgeInsets.all(24.0),
             decoration: BoxDecoration(
               color: const Color(0xFF15102A).withOpacity(0.95),
               borderRadius: BorderRadius.circular(24),
@@ -549,6 +704,35 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                   'Всего попыток: ${_session.attempts}',
                   style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 15),
                 ),
+                const SizedBox(height: 10),
+                // Награды за прохождение
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B143A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFFFD700), width: 1.5),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.stars_rounded, color: Color(0xFFFFD700), size: 22),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Собрано: +$_sessionPointsEarned очков | Бонус: +$winBonus',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                          color: Color(0xFFFFD700),
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -567,6 +751,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                       child: NeonButton(
                         onTap: () {
                           _session.restart();
+                          _sessionCoinsCollected = 0;
+                          _sessionPointsEarned = 0;
                           setState(() {});
                         },
                         text: 'ЗАНОВО',
@@ -580,6 +766,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               ],
             ),
           ),
+          ),
         ),
       ),
     );
@@ -591,9 +778,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       child: Container(
         color: Colors.black.withOpacity(0.65),
         child: Center(
-          child: Container(
-            width: 360,
-            padding: const EdgeInsets.all(24.0),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Container(
+              width: 360,
+              padding: const EdgeInsets.all(20.0),
             decoration: BoxDecoration(
               color: const Color(0xFF140E2E).withOpacity(0.96),
               borderRadius: BorderRadius.circular(24),
@@ -626,6 +815,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                   widget.level.title,
                   style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 15),
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  'Очки за попытку: +$_sessionPointsEarned 🪙',
+                  style: const TextStyle(color: Color(0xFFFFD700), fontSize: 13, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 18),
 
                 // Кнопка Продолжить
@@ -643,6 +837,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                   onTap: () {
                     _togglePause();
                     _session.restart();
+                    _sessionCoinsCollected = 0;
+                    _sessionPointsEarned = 0;
                   },
                   text: 'РЕСТАРТ',
                   icon: Icons.replay_rounded,
@@ -676,6 +872,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),

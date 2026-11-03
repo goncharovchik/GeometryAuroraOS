@@ -3,6 +3,8 @@ enum PlayerMode {
   cube,
   ship,
   ball,
+  ufo,
+  wave,
 }
 
 /// Направление силы гравитации

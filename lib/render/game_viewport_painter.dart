@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/game_constants.dart';
 import '../../domain/models/level.dart';
 import '../../domain/models/level_object.dart';
+import '../../domain/models/player_character.dart';
 import '../../domain/models/player_mode.dart';
 import '../../engine/player_controller.dart';
 import 'camera_controller.dart';
@@ -16,6 +17,8 @@ class GameViewportPainter extends CustomPainter {
   final Color playerColor1;
   final Color playerColor2;
   final double bpmPulse; // Коэффициент пульсации музыки (0.0..1.0)
+  final CharacterStyle characterStyle;
+  final Set<String> collectedCoinIds;
 
   GameViewportPainter({
     required this.level,
@@ -25,6 +28,8 @@ class GameViewportPainter extends CustomPainter {
     this.playerColor1 = GameConstants.defaultPlayerColor1,
     this.playerColor2 = GameConstants.defaultPlayerColor2,
     this.bpmPulse = 0.0,
+    this.characterStyle = CharacterStyle.classic,
+    this.collectedCoinIds = const {},
   });
 
   @override
@@ -41,7 +46,7 @@ class GameViewportPainter extends CustomPainter {
     // 4. Отрисовка следа персонажа (Trail)
     _drawPlayerTrail(canvas, size);
 
-    // 5. Отрисовка персонажа (Куб / Корабль / Шар)
+    // 5. Отрисовка персонажа (Куб / Корабль / Шар / Волна / НЛО)
     if (!player.isDead) {
       _drawPlayer(canvas, size);
     }
@@ -72,7 +77,6 @@ class GameViewportPainter extends CustomPainter {
       ..strokeWidth = 1.0;
 
     const bgCellSize = 96.0;
-    // Параллакс смещение: фон движется медленнее камеры
     final parallaxX = (camera.position.x * 0.25) % bgCellSize;
     final parallaxY = (camera.position.y * 0.25) % bgCellSize;
 
@@ -133,9 +137,13 @@ class GameViewportPainter extends CustomPainter {
     for (final obj in level.objects) {
       if (obj.pixelX < minVisibleX || obj.pixelX > maxVisibleX) continue;
 
+      // Пропускаем уже собранные монетки
+      if (obj.type == ObjectType.coin && collectedCoinIds.contains(obj.id)) {
+        continue;
+      }
+
       final screenPos = camera.worldToScreen(obj.pixelX, obj.pixelY, size.height);
       final x = screenPos.dx;
-      // В worldToScreen screenPos.dy это нижняя грань объекта
       final y = screenPos.dy - GameConstants.tileSize;
       const tileSize = GameConstants.tileSize;
 
@@ -194,7 +202,6 @@ class GameViewportPainter extends CustomPainter {
 
   void _drawSpike(Canvas canvas, double x, double y, double size, double rotation) {
     canvas.save();
-    // Поворот вокруг центра тайла
     final cx = x + size / 2.0;
     final cy = y + size / 2.0;
     canvas.translate(cx, cy);
@@ -207,17 +214,14 @@ class GameViewportPainter extends CustomPainter {
       ..lineTo(x + size, y + size)
       ..close();
 
-    // Черное тело шипа
     canvas.drawPath(path, Paint()..color = const Color(0xFF140005));
 
-    // Неоновый контур
     final spikeBorder = Paint()
       ..color = const Color(0xFFFF0055)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
     canvas.drawPath(path, spikeBorder);
 
-    // Внутренняя светящаяся линия по центру
     canvas.drawLine(
       Offset(x + size / 2.0, y + 4),
       Offset(x + size / 2.0, y + size - 2),
@@ -249,7 +253,6 @@ class GameViewportPainter extends CustomPainter {
       Paint()..color = padColor,
     );
 
-    // Свечение
     canvas.drawRRect(
       RRect.fromRectAndRadius(padRect, const Radius.circular(5)),
       Paint()
@@ -276,7 +279,6 @@ class GameViewportPainter extends CustomPainter {
     final center = Offset(x + size / 2.0, y + size / 2.0);
     final radius = (size / 2.0) - 6.0;
 
-    // Внешнее пульсирующее кольцо
     canvas.drawCircle(
       center,
       radius + (bpmPulse * 3.0),
@@ -286,14 +288,12 @@ class GameViewportPainter extends CustomPainter {
         ..strokeWidth = 3.0,
     );
 
-    // Ядро орба
     canvas.drawCircle(
       center,
       radius * 0.65,
       Paint()..color = orbColor,
     );
 
-    // Центральный белый блик
     canvas.drawCircle(
       center,
       radius * 0.3,
@@ -305,13 +305,28 @@ class GameViewportPainter extends CustomPainter {
     Color portalColor = const Color(0xFF00FFCC);
     if (obj.type == ObjectType.portalGravity) {
       portalColor = const Color(0xFF9900FF);
-    } else if (obj.type == ObjectType.portalMode && obj.targetMode == PlayerMode.ship) {
-      portalColor = const Color(0xFFFF6600);
+    } else if (obj.type == ObjectType.portalMode) {
+      switch (obj.targetMode) {
+        case PlayerMode.cube:
+          portalColor = const Color(0xFF00FF66);
+          break;
+        case PlayerMode.ship:
+          portalColor = const Color(0xFFFF6600);
+          break;
+        case PlayerMode.ball:
+          portalColor = const Color(0xFFFF0055);
+          break;
+        case PlayerMode.wave:
+          portalColor = const Color(0xFF00E5FF);
+          break;
+        case PlayerMode.ufo:
+          portalColor = const Color(0xFFFFD700);
+          break;
+      }
     }
 
     final center = Offset(x + size / 2.0, y + size / 2.0);
 
-    // Портал в виде светящегося вихревого эллипса
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.scale(0.5, 1.4);
@@ -341,22 +356,93 @@ class GameViewportPainter extends CustomPainter {
 
   void _drawCoin(Canvas canvas, double x, double y, double size) {
     final center = Offset(x + size / 2.0, y + size / 2.0);
+    final coinRadius = size * 0.38;
+
+    // Внешнее пульсирующее свечение
     canvas.drawCircle(
       center,
-      size * 0.35,
+      coinRadius + 4.0 + (bpmPulse * 3.0),
+      Paint()..color = const Color(0xFFFFD700).withOpacity(0.25),
+    );
+
+    // Золотое тело монеты
+    canvas.drawCircle(
+      center,
+      coinRadius,
       Paint()..color = const Color(0xFFFFD700),
     );
+
+    // Белый ободок
     canvas.drawCircle(
       center,
-      size * 0.35,
+      coinRadius,
       Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.0,
     );
+
+    // Внутренняя пятиконечная звезда
+    final starPath = Path();
+    for (int i = 0; i < 5; i++) {
+      final outerAngle = (i * 4.0 * math.pi / 5.0) - (math.pi / 2.0);
+      final innerAngle = outerAngle + (2.0 * math.pi / 10.0);
+      final rOuter = coinRadius * 0.65;
+      final rInner = coinRadius * 0.28;
+
+      if (i == 0) {
+        starPath.moveTo(center.dx + math.cos(outerAngle) * rOuter, center.dy + math.sin(outerAngle) * rOuter);
+      } else {
+        starPath.lineTo(center.dx + math.cos(outerAngle) * rOuter, center.dy + math.sin(outerAngle) * rOuter);
+      }
+      starPath.lineTo(center.dx + math.cos(innerAngle) * rInner, center.dy + math.sin(innerAngle) * rInner);
+    }
+    starPath.close();
+
+    canvas.drawPath(starPath, Paint()..color = const Color(0xFFFFF176));
+    canvas.drawPath(
+      starPath,
+      Paint()
+        ..color = const Color(0xFFE65100)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
   }
 
   void _drawPlayerTrail(Canvas canvas, Size size) {
+    if (player.mode == PlayerMode.wave) {
+      // Для Волны: яркий неоновый лазерный след (zig-zag beam)
+      if (player.trail.length >= 2) {
+        final path = Path();
+        for (int i = 0; i < player.trail.length; i++) {
+          final pt = player.trail[i];
+          final sp = camera.worldToScreen(pt.x, pt.y, size.height);
+          final cx = sp.dx + GameConstants.playerSize / 2.0;
+          final cy = sp.dy - GameConstants.playerSize / 2.0;
+          if (i == 0) {
+            path.moveTo(cx, cy);
+          } else {
+            path.lineTo(cx, cy);
+          }
+        }
+        canvas.drawPath(
+          path,
+          Paint()
+            ..color = playerColor1.withOpacity(0.4)
+            ..strokeWidth = 8.0
+            ..style = PaintingStyle.stroke,
+        );
+        canvas.drawPath(
+          path,
+          Paint()
+            ..color = Colors.white
+            ..strokeWidth = 3.0
+            ..style = PaintingStyle.stroke,
+        );
+      }
+      return;
+    }
+
     for (int i = 0; i < player.trail.length; i++) {
       final pt = player.trail[i];
       final screenPos = camera.worldToScreen(pt.x, pt.y, size.height);
@@ -384,32 +470,74 @@ class GameViewportPainter extends CustomPainter {
     const pSize = GameConstants.playerSize;
 
     canvas.save();
-    // Точка вращения — центр куба
     final cx = screenPos.dx + pSize / 2.0;
     final cy = screenPos.dy - pSize / 2.0;
 
     canvas.translate(cx, cy);
     canvas.rotate(player.rotationDegrees * math.pi / 180.0);
 
-    if (player.mode == PlayerMode.cube) {
-      _drawPlayerCube(canvas, pSize);
-    } else if (player.mode == PlayerMode.ship) {
-      _drawPlayerShip(canvas, pSize);
-    } else if (player.mode == PlayerMode.ball) {
-      _drawPlayerBall(canvas, pSize);
+    // Мерцание при временной неуязвимости
+    if (player.shieldInvulnerabilityTimer > 0.0) {
+      final flash = ((player.shieldInvulnerabilityTimer * 20).toInt() % 2) == 0;
+      if (flash) {
+        canvas.scale(1.08);
+      }
+    }
+
+    switch (player.mode) {
+      case PlayerMode.cube:
+        _drawCustomPlayerCube(canvas, pSize);
+        break;
+      case PlayerMode.ship:
+        _drawPlayerShip(canvas, pSize);
+        break;
+      case PlayerMode.ball:
+        _drawPlayerBall(canvas, pSize);
+        break;
+      case PlayerMode.wave:
+        _drawPlayerWave(canvas, pSize);
+        break;
+      case PlayerMode.ufo:
+        _drawPlayerUfo(canvas, pSize);
+        break;
+    }
+
+    // Отрисовка энергетического щита, если он активен
+    if (player.shieldCharges > 0) {
+      _drawShieldAura(canvas, pSize);
     }
 
     canvas.restore();
   }
 
-  void _drawPlayerCube(Canvas canvas, double size) {
+  void _drawShieldAura(Canvas canvas, double size) {
+    final shieldRadius = (size / 2.0) + 7.0;
+    final pulse = math.sin(player.position.x * 0.05) * 2.0;
+
+    // Внешнее кольцо щита
+    canvas.drawCircle(
+      Offset.zero,
+      shieldRadius + pulse,
+      Paint()
+        ..color = const Color(0xFF00E5FF).withOpacity(0.55)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+
+    // Внутреннее полупрозрачное свечение
+    canvas.drawCircle(
+      Offset.zero,
+      shieldRadius + pulse,
+      Paint()..color = const Color(0xFF00E5FF).withOpacity(0.12),
+    );
+  }
+
+  void _drawCustomPlayerCube(Canvas canvas, double size) {
     final half = size / 2.0;
     final bodyRect = Rect.fromCenter(center: Offset.zero, width: size, height: size);
 
-    // Основной цвет тела
+    // 1. Основное тело куба
     canvas.drawRect(bodyRect, Paint()..color = playerColor1);
-
-    // Черная рамка вокруг кубика
     canvas.drawRect(
       bodyRect,
       Paint()
@@ -418,7 +546,30 @@ class GameViewportPainter extends CustomPainter {
         ..strokeWidth = 3.0,
     );
 
-    // Внутренний квадрат второго цвета
+    // 2. Отрисовка уникальных деталей персонажа
+    switch (characterStyle) {
+      case CharacterStyle.classic:
+        _drawClassicDetails(canvas, size, half);
+        break;
+      case CharacterStyle.phantom:
+        _drawPhantomDetails(canvas, size, half);
+        break;
+      case CharacterStyle.vortex:
+        _drawVortexDetails(canvas, size, half);
+        break;
+      case CharacterStyle.graviton:
+        _drawGravitonDetails(canvas, size, half);
+        break;
+      case CharacterStyle.magnetron:
+        _drawMagnetronDetails(canvas, size, half);
+        break;
+      case CharacterStyle.titan:
+        _drawTitanDetails(canvas, size, half);
+        break;
+    }
+  }
+
+  void _drawClassicDetails(Canvas canvas, double size, double half) {
     final innerSize = size * 0.55;
     final innerRect = Rect.fromCenter(center: Offset.zero, width: innerSize, height: innerSize);
     canvas.drawRect(innerRect, Paint()..color = playerColor2);
@@ -430,10 +581,105 @@ class GameViewportPainter extends CustomPainter {
         ..strokeWidth = 2.0,
     );
 
-    // Глаза кубика в стиле Geometry Dash
     final eyePaint = Paint()..color = Colors.black;
     canvas.drawRect(Rect.fromLTWH(-half + 10, -half + 10, 7, 10), eyePaint);
     canvas.drawRect(Rect.fromLTWH(half - 17, -half + 10, 7, 10), eyePaint);
+  }
+
+  void _drawPhantomDetails(Canvas canvas, double size, double half) {
+    // Кибер-ниндзя: темная маска и светящиеся диагональные глаза-визоры
+    final maskRect = Rect.fromCenter(center: Offset.zero, width: size * 0.65, height: size * 0.5);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(maskRect, const Radius.circular(4)),
+      Paint()..color = const Color(0xFF100826),
+    );
+
+    // Диагональные хищные глаза
+    final eyePaint = Paint()..color = playerColor2;
+    final eyePath1 = Path()
+      ..moveTo(-half + 9, -2)
+      ..lineTo(-half + 19, -6)
+      ..lineTo(-half + 18, 2)
+      ..close();
+    final eyePath2 = Path()
+      ..moveTo(half - 9, -2)
+      ..lineTo(half - 19, -6)
+      ..lineTo(half - 18, 2)
+      ..close();
+
+    canvas.drawPath(eyePath1, eyePaint);
+    canvas.drawPath(eyePath2, eyePaint);
+
+    // Неоновые рожки-антенны
+    canvas.drawLine(Offset(-half + 6, -half), Offset(-half + 2, -half - 6), Paint()..color = playerColor2..strokeWidth = 2.5);
+    canvas.drawLine(Offset(half - 6, -half), Offset(half - 2, -half - 6), Paint()..color = playerColor2..strokeWidth = 2.5);
+  }
+
+  void _drawVortexDetails(Canvas canvas, double size, double half) {
+    // Турбо-Вортекс: скоростные полосы и турбины
+    final stripePaint = Paint()..color = playerColor2;
+    canvas.drawRect(Rect.fromLTWH(-half + 6, -half + 4, size - 12, 5), stripePaint);
+    canvas.drawRect(Rect.fromLTWH(-half + 10, -half + 12, size - 20, 4), stripePaint);
+
+    // Двойное ядро турбины
+    canvas.drawCircle(const Offset(-7, 4), 6, Paint()..color = playerColor2);
+    canvas.drawCircle(const Offset(7, 4), 6, Paint()..color = playerColor2);
+    canvas.drawCircle(const Offset(-7, 4), 3, Paint()..color = Colors.black);
+    canvas.drawCircle(const Offset(7, 4), 3, Paint()..color = Colors.black);
+  }
+
+  void _drawGravitonDetails(Canvas canvas, double size, double half) {
+    // Гравитон: кольцо сингулярности в центре
+    final ringRadius = size * 0.32;
+    canvas.drawCircle(
+      Offset.zero,
+      ringRadius,
+      Paint()
+        ..color = playerColor2
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0,
+    );
+    canvas.drawCircle(Offset.zero, ringRadius * 0.45, Paint()..color = playerColor2);
+    canvas.drawCircle(Offset.zero, ringRadius * 0.2, Paint()..color = Colors.black);
+
+    // Квантовые энергетические точки на углах
+    final dotPaint = Paint()..color = playerColor2;
+    canvas.drawCircle(Offset(-half + 8, -half + 8), 3, dotPaint);
+    canvas.drawCircle(Offset(half - 8, -half + 8), 3, dotPaint);
+    canvas.drawCircle(Offset(-half + 8, half - 8), 3, dotPaint);
+    canvas.drawCircle(Offset(half - 8, half - 8), 3, dotPaint);
+  }
+
+  void _drawMagnetronDetails(Canvas canvas, double size, double half) {
+    // Магнетрон: электромагнитные катушки по бокам и сканер
+    final coilPaint = Paint()..color = playerColor2..strokeWidth = 2.5;
+    canvas.drawLine(Offset(-half - 3, -8), Offset(-half - 3, 8), coilPaint);
+    canvas.drawLine(Offset(half + 3, -8), Offset(half + 3, 8), coilPaint);
+
+    // Горизонтальный визор-сканер
+    final visorRect = Rect.fromCenter(center: const Offset(0, -4), width: size * 0.75, height: 7);
+    canvas.drawRRect(RRect.fromRectAndRadius(visorRect, const Radius.circular(3)), Paint()..color = Colors.black);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromCenter(center: const Offset(0, -4), width: size * 0.65, height: 4), const Radius.circular(2)),
+      Paint()..color = playerColor2,
+    );
+  }
+
+  void _drawTitanDetails(Canvas canvas, double size, double half) {
+    // Кибер-Титан: бронеплиты и рунический крест
+    final inner = Rect.fromCenter(center: Offset.zero, width: size * 0.6, height: size * 0.6);
+    canvas.drawRect(inner, Paint()..color = playerColor2);
+    canvas.drawRect(inner, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 2);
+
+    // Золотые заклепки брони
+    final boltPaint = Paint()..color = Colors.black;
+    canvas.drawCircle(Offset(-half + 6, -half + 6), 2.5, boltPaint);
+    canvas.drawCircle(Offset(half - 6, -half + 6), 2.5, boltPaint);
+    canvas.drawCircle(Offset(-half + 6, half - 6), 2.5, boltPaint);
+    canvas.drawCircle(Offset(half - 6, half - 6), 2.5, boltPaint);
+
+    // Центральный броневизор
+    canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: 14, height: 4), Paint()..color = Colors.white);
   }
 
   void _drawPlayerShip(Canvas canvas, double size) {
@@ -492,6 +738,76 @@ class GameViewportPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5,
     );
+  }
+
+  void _drawPlayerWave(Canvas canvas, double size) {
+    final half = size / 2.0;
+
+    // Волна: изящный стреловидный дротик
+    final wavePath = Path()
+      ..moveTo(half, 0)
+      ..lineTo(-half, -half * 0.75)
+      ..lineTo(-half * 0.45, 0)
+      ..lineTo(-half, half * 0.75)
+      ..close();
+
+    canvas.drawPath(wavePath, Paint()..color = playerColor1);
+    canvas.drawPath(
+      wavePath,
+      Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+
+    // Энергетическое ядро
+    final corePath = Path()
+      ..moveTo(half * 0.4, 0)
+      ..lineTo(-half * 0.3, -half * 0.35)
+      ..lineTo(-half * 0.1, 0)
+      ..lineTo(-half * 0.3, half * 0.35)
+      ..close();
+
+    canvas.drawPath(corePath, Paint()..color = playerColor2);
+  }
+
+  void _drawPlayerUfo(Canvas canvas, double size) {
+    final half = size / 2.0;
+
+    // НЛО: летающая тарелка
+    final bodyPath = Path()
+      ..moveTo(half * 1.05, 0)
+      ..quadraticBezierTo(0, half * 0.7, -half * 1.05, 0)
+      ..quadraticBezierTo(0, -half * 0.3, half * 1.05, 0)
+      ..close();
+
+    canvas.drawPath(bodyPath, Paint()..color = playerColor1);
+    canvas.drawPath(
+      bodyPath,
+      Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+
+    // Стеклянный купол кабины
+    final domeRect = Rect.fromLTWH(-half * 0.55, -half * 0.9, size * 0.55, size * 0.65);
+    canvas.drawArc(domeRect, math.pi, math.pi, true, Paint()..color = playerColor2.withOpacity(0.9));
+    canvas.drawArc(
+      domeRect,
+      math.pi,
+      math.pi,
+      false,
+      Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0,
+    );
+
+    // Огни по корпусу тарелки
+    canvas.drawCircle(Offset(-half * 0.6, 2), 2.5, Paint()..color = Colors.white);
+    canvas.drawCircle(const Offset(0, 5), 2.5, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(half * 0.6, 2), 2.5, Paint()..color = Colors.white);
   }
 
   void _drawParticles(Canvas canvas, Size size) {
