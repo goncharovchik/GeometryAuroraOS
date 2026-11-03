@@ -47,7 +47,7 @@ class PlayerController {
   }
 
   AABB get hitbox {
-    final padding = GameConstants.playerHitboxPadding;
+    const padding = GameConstants.playerHitboxPadding;
     return AABB.fromDimensions(
       x: position.x + padding,
       y: position.y + padding,
@@ -110,6 +110,17 @@ class PlayerController {
     if (!isGrounded) {
       velocity.y -= GameConstants.gravity * gSign * dt;
 
+      // Ограничение терминальной скорости падения
+      if (gSign > 0) {
+        if (velocity.y < -GameConstants.maxFallSpeed) {
+          velocity.y = -GameConstants.maxFallSpeed;
+        }
+      } else {
+        if (velocity.y > GameConstants.maxFallSpeed) {
+          velocity.y = GameConstants.maxFallSpeed;
+        }
+      }
+
       // Вращение в воздухе
       final rotDir = gSign > 0 ? 1.0 : -1.0;
       rotationDegrees += GameConstants.rotationSpeed * rotDir * dt;
@@ -151,6 +162,15 @@ class PlayerController {
       velocity.y = 150.0 * gravity.sign;
     } else if (!isGrounded) {
       velocity.y -= GameConstants.gravity * gSign * dt;
+      if (gSign > 0) {
+        if (velocity.y < -GameConstants.maxFallSpeed) {
+          velocity.y = -GameConstants.maxFallSpeed;
+        }
+      } else {
+        if (velocity.y > GameConstants.maxFallSpeed) {
+          velocity.y = GameConstants.maxFallSpeed;
+        }
+      }
     }
 
     // Непрерывное вращение шара при движении

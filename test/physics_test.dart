@@ -157,6 +157,52 @@ void main() {
       expect(result, equals(CollisionResult.orbTriggered));
       expect(player.velocity.y, equals(GameConstants.yellowOrbVelocity));
     });
+
+    test('Игрок в воздухе рядом с блоком НЕ становится grounded и падает под действием гравитации', () {
+      final block = LevelObject(
+        id: 'block_near',
+        type: ObjectType.solidBlock,
+        gridX: 2,
+        gridY: 0,
+      );
+
+      // Игрок находится в воздухе на высоте 100 пикселей (выше блока 48 px), рядом по X
+      player.position.set(block.pixelX, 100.0);
+      player.velocity.y = -100.0;
+      player.isGrounded = false;
+
+      final result = detector.checkAndResolve(player: player, objects: [block]);
+
+      expect(result, equals(CollisionResult.none));
+      expect(player.isDead, isFalse);
+      expect(player.isGrounded, isFalse); // Не должен приземляться в воздухе!
+
+      // Физический тик должен продолжать применять гравитацию
+      final prevVelY = player.velocity.y;
+      player.updatePhysics(GameConstants.fixedDeltaTime);
+      expect(player.velocity.y, lessThan(prevVelY)); // Скорость падения увеличивается вниз
+      expect(player.position.y, lessThan(100.0)); // Координата Y уменьшается
+    });
+
+    test('Терминальная скорость падения не превышает maxFallSpeed', () {
+      player.position.set(0.0, 500.0);
+      player.velocity.y = -GameConstants.maxFallSpeed - 200.0;
+      player.isGrounded = false;
+
+      player.updatePhysics(GameConstants.fixedDeltaTime);
+
+      expect(player.velocity.y, equals(-GameConstants.maxFallSpeed));
+    });
+
+    test('Потолок уровня ограничивает полет и обнуляет скорость вверх', () {
+      player.position.set(0.0, detector.ceilingY + 50.0);
+      player.velocity.y = 500.0;
+
+      detector.checkAndResolve(player: player, objects: []);
+
+      expect(player.position.y, equals(detector.ceilingY - GameConstants.playerSize));
+      expect(player.velocity.y, equals(0.0));
+    });
   });
 
   group('Сериализация уровней и GameSession', () {

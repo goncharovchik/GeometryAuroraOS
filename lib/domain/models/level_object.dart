@@ -70,6 +70,23 @@ class LevelObject {
         height: height,
       );
 
+  AABB get padAabb {
+    if (rotationDegrees == 180.0) {
+      return AABB.fromDimensions(
+        x: pixelX + 4.0,
+        y: pixelY + height - 16.0,
+        width: width - 8.0,
+        height: 16.0,
+      );
+    }
+    return AABB.fromDimensions(
+      x: pixelX + 4.0,
+      y: pixelY,
+      width: width - 8.0,
+      height: 16.0,
+    );
+  }
+
   TriangleHitbox get spikeHitbox => TriangleHitbox.spike(
         tileX: pixelX,
         tileY: pixelY,

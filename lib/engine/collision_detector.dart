@@ -1,5 +1,4 @@
 import '../../core/constants/game_constants.dart';
-import '../../core/math/hitbox.dart';
 import '../../core/math/vector2d.dart';
 import '../../domain/models/level_object.dart';
 import '../../domain/models/player_mode.dart';
@@ -12,6 +11,12 @@ enum CollisionResult {
   padTriggered,
   orbTriggered,
   portalTriggered,
+}
+
+enum _BlockResolution {
+  none,
+  landed,
+  death,
 }
 
 class CollisionDetector {
@@ -37,32 +42,48 @@ class CollisionDetector {
   }) {
     if (player.isDead || player.hasWon) return CollisionResult.none;
 
-    final playerBox = player.hitbox;
     final gSign = player.gravity.sign;
+    bool groundedThisFrame = false;
 
-    // 1. Проверка коллизий с полом уровня
+    // 1. Проверка коллизий с полом и потолком уровня
+    final maxAllowedY = ceilingY - GameConstants.playerSize;
+
     if (player.gravity == GravityDirection.down) {
       if (player.position.y <= groundY) {
         player.position.y = groundY;
-        player.velocity.y = 0.0;
-        player.isGrounded = true;
+        if (player.velocity.y < 0.0) {
+          player.velocity.y = 0.0;
+        }
+        groundedThisFrame = true;
+      } else if (player.position.y >= maxAllowedY) {
+        player.position.y = maxAllowedY;
+        if (player.velocity.y > 0.0) {
+          player.velocity.y = 0.0;
+        }
       }
     } else {
       // При инвертированной гравитации пол сверху
-      if (player.position.y >= ceilingY - GameConstants.playerSize) {
-        player.position.y = ceilingY - GameConstants.playerSize;
-        player.velocity.y = 0.0;
-        player.isGrounded = true;
+      if (player.position.y >= maxAllowedY) {
+        player.position.y = maxAllowedY;
+        if (player.velocity.y > 0.0) {
+          player.velocity.y = 0.0;
+        }
+        groundedThisFrame = true;
+      } else if (player.position.y <= groundY) {
+        player.position.y = groundY;
+        if (player.velocity.y < 0.0) {
+          player.velocity.y = 0.0;
+        }
       }
     }
 
-    // Для режима Корабля: пол и потолок ограничивают полет
+    // Для режима Корабля: пол и потолок жестко ограничивают полет
     if (player.mode == PlayerMode.ship) {
       if (player.position.y <= groundY) {
         player.position.y = groundY;
         player.velocity.y = 0.0;
-      } else if (player.position.y >= ceilingY - GameConstants.playerSize) {
-        player.position.y = ceilingY - GameConstants.playerSize;
+      } else if (player.position.y >= maxAllowedY) {
+        player.position.y = maxAllowedY;
         player.velocity.y = 0.0;
       }
     }
@@ -73,32 +94,32 @@ class CollisionDetector {
       return dx < GameConstants.tileSize * 3.0;
     });
 
-    bool landedOnBlock = false;
-
     for (final obj in nearbyObjects) {
       switch (obj.type) {
         case ObjectType.solidBlock:
-          final res = _resolveBlockCollision(player, playerBox, obj, gSign);
-          if (res == CollisionResult.death) {
+          final res = _resolveBlockCollision(player, obj, gSign);
+          if (res == _BlockResolution.death) {
             player.isDead = true;
             return CollisionResult.death;
-          } else if (res == CollisionResult.none) {
-            landedOnBlock = true;
+          } else if (res == _BlockResolution.landed) {
+            groundedThisFrame = true;
           }
           break;
 
         case ObjectType.spike:
         case ObjectType.hangingSpike:
-          if (obj.spikeHitbox.intersectsAABB(playerBox)) {
+          if (obj.spikeHitbox.intersectsAABB(player.hitbox)) {
             player.isDead = true;
             return CollisionResult.death;
           }
           break;
 
         case ObjectType.jumpPad:
-          if (playerBox.intersects(obj.aabb)) {
+          if (player.hitbox.intersects(obj.padAabb)) {
             final padVel = _getPadVelocity(obj.padColor);
             player.applyPadJump(padVel);
+            player.isGrounded = false;
+            groundedThisFrame = false;
             return CollisionResult.padTriggered;
           }
           break;
@@ -120,27 +141,29 @@ class CollisionDetector {
               _activatedOrbs.add(obj.id);
               final orbVel = _getOrbVelocity(obj.orbColor);
               player.applyOrbJump(orbVel);
+              player.isGrounded = false;
+              groundedThisFrame = false;
               return CollisionResult.orbTriggered;
             }
           }
           break;
 
         case ObjectType.portalMode:
-          if (playerBox.intersects(obj.aabb)) {
+          if (player.hitbox.intersects(obj.aabb)) {
             player.mode = obj.targetMode;
             return CollisionResult.portalTriggered;
           }
           break;
 
         case ObjectType.portalGravity:
-          if (playerBox.intersects(obj.aabb)) {
+          if (player.hitbox.intersects(obj.aabb)) {
             player.gravity = obj.targetGravity;
             return CollisionResult.portalTriggered;
           }
           break;
 
         case ObjectType.portalSpeed:
-          if (playerBox.intersects(obj.aabb)) {
+          if (player.hitbox.intersects(obj.aabb)) {
             player.speedModifier = obj.targetSpeed;
             return CollisionResult.portalTriggered;
           }
@@ -159,55 +182,76 @@ class CollisionDetector {
       }
     }
 
-    if (landedOnBlock) {
-      player.isGrounded = true;
-    }
+    // Обновляем статус заземления персонажа
+    player.isGrounded = groundedThisFrame;
 
     return CollisionResult.none;
   }
 
   /// Обработка блока: приземление сверху = хорошо, удар о грань или снизу = Смерть!
-  CollisionResult _resolveBlockCollision(
+  _BlockResolution _resolveBlockCollision(
     PlayerController player,
-    AABB playerBox,
     LevelObject block,
     double gSign,
   ) {
     final blockBox = block.aabb;
-    if (!playerBox.intersects(blockBox)) return CollisionResult.none;
 
-    final intersection = playerBox.intersection(blockBox);
-    if (intersection == null) return CollisionResult.none;
+    // 1. Проверяем наличие горизонтального пересечения
+    final playerLeft = player.position.x + GameConstants.playerHitboxPadding;
+    final playerRight = player.position.x + GameConstants.playerSize - GameConstants.playerHitboxPadding;
+    final blockLeft = blockBox.minX;
+    final blockRight = blockBox.maxX;
 
-    // В Geometry Dash если игрок падает сверху на блок:
-    // Допуск по высоте приземления (landing margin)
-    const landingTolerance = 14.0;
+    final hasHorizontalOverlap = playerRight > blockLeft + 2.0 && playerLeft < blockRight - 2.0;
+    if (!hasHorizontalOverlap) {
+      return _BlockResolution.none;
+    }
+
+    const landingTolerance = 18.0;
 
     if (gSign > 0) {
       // Обычная гравитация (вниз)
       final feetY = player.position.y;
       final blockTop = blockBox.maxY;
 
-      // Если ноги игрока находились около вершины блока и игрок падал/двигался вниз
-      if ((feetY - blockTop).abs() <= landingTolerance && player.velocity.y <= 50.0) {
+      // Если ноги игрока находятся около вершины блока и игрок падает/стоит
+      final isFallingOrStanding = player.velocity.y <= 50.0;
+      final isNearTop = feetY >= blockTop - landingTolerance && feetY <= blockTop + 4.0;
+
+      if (isFallingOrStanding && isNearTop) {
         player.position.y = blockTop;
-        player.velocity.y = 0.0;
-        return CollisionResult.none; // Безопасное приземление
+        if (player.velocity.y < 0.0) {
+          player.velocity.y = 0.0;
+        }
+        return _BlockResolution.landed;
+      }
+
+      // Если это не безопасное приземление, проверяем удар о грань или снизу
+      if (player.hitbox.intersects(blockBox)) {
+        return _BlockResolution.death;
       }
     } else {
       // Инвертированная гравитация (вверх)
       final headY = player.position.y + GameConstants.playerSize;
       final blockBottom = blockBox.minY;
 
-      if ((headY - blockBottom).abs() <= landingTolerance && player.velocity.y >= -50.0) {
+      final isFallingOrStanding = player.velocity.y >= -50.0;
+      final isNearBottom = headY <= blockBottom + landingTolerance && headY >= blockBottom - 4.0;
+
+      if (isFallingOrStanding && isNearBottom) {
         player.position.y = blockBottom - GameConstants.playerSize;
-        player.velocity.y = 0.0;
-        return CollisionResult.none;
+        if (player.velocity.y > 0.0) {
+          player.velocity.y = 0.0;
+        }
+        return _BlockResolution.landed;
+      }
+
+      if (player.hitbox.intersects(blockBox)) {
+        return _BlockResolution.death;
       }
     }
 
-    // Любое столкновение сбоку или ударом снизу головой в блок — это смерть!
-    return CollisionResult.death;
+    return _BlockResolution.none;
   }
 
   double _getPadVelocity(PadColor color) {

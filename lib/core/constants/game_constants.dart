@@ -18,6 +18,7 @@ class GameConstants {
   static const double baseRunSpeed = 380.0; // Пикселей в секунду для 1x скорости
   static const double gravity = 2200.0;
   static const double jumpVelocity = 760.0;
+  static const double maxFallSpeed = 960.0; // Максимальная скорость падения (терминальная скорость)
   static const double rotationSpeed = 360.0; // Градусов в секунду во время прыжка
 
   // Физика Корабля

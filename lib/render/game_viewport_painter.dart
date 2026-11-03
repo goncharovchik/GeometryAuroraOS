@@ -137,7 +137,7 @@ class GameViewportPainter extends CustomPainter {
       final x = screenPos.dx;
       // В worldToScreen screenPos.dy это нижняя грань объекта
       final y = screenPos.dy - GameConstants.tileSize;
-      final tileSize = GameConstants.tileSize;
+      const tileSize = GameConstants.tileSize;
 
       switch (obj.type) {
         case ObjectType.solidBlock:
@@ -381,7 +381,7 @@ class GameViewportPainter extends CustomPainter {
 
   void _drawPlayer(Canvas canvas, Size size) {
     final screenPos = camera.worldToScreen(player.position.x, player.position.y, size.height);
-    final pSize = GameConstants.playerSize;
+    const pSize = GameConstants.playerSize;
 
     canvas.save();
     // Точка вращения — центр куба
@@ -457,9 +457,9 @@ class GameViewportPainter extends CustomPainter {
     );
 
     // Кабина
-    canvas.drawCircle(Offset(0, 0), half * 0.35, Paint()..color = playerColor2);
+    canvas.drawCircle(Offset.zero, half * 0.35, Paint()..color = playerColor2);
     canvas.drawCircle(
-      Offset(0, 0),
+      Offset.zero,
       half * 0.35,
       Paint()
         ..color = Colors.black

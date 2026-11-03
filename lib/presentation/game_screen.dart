@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,7 @@ import '../engine/game_ticker.dart';
 import '../render/camera_controller.dart';
 import '../render/game_viewport_painter.dart';
 import '../render/particle_system.dart';
+import 'widgets/neon_button.dart';
 
 class GameScreen extends StatefulWidget {
   final Level level;
@@ -225,88 +227,211 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                 ),
               ),
 
-              // Верхний прогресс-бар уровня
+              // Верхний футуристичный HUD уровня
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: SafeArea(
-                  child: Column(
-                    children: [
-                      LinearProgressIndicator(
-                        value: _session.currentPercentage / 100.0,
-                        backgroundColor: Colors.white.withOpacity(0.15),
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00FF66)),
-                        minHeight: 6,
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // Процент прохождения
-                            Text(
-                              '${_session.currentPercentage.toInt()}%',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.2,
-                                shadows: [
-                                  Shadow(color: Colors.black, blurRadius: 4, offset: Offset(1, 1)),
-                                ],
-                              ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Номер попытки
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF140F30).withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.white24, width: 1.5),
+                          ),
+                          child: Text(
+                            'Попытка ${_session.attempts}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
                             ),
-                            // Номер попытки
-                            Text(
-                              'Attempt ${_session.attempts}',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.85),
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                shadows: const [
-                                  Shadow(color: Colors.black, blurRadius: 4),
-                                ],
-                              ),
-                            ),
-                            // Кнопка паузы
-                            IconButton(
-                              icon: const Icon(Icons.pause, color: Colors.white, size: 28),
-                              onPressed: _togglePause,
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+
+                        // Центральный прогресс-бар с бегущим значком куба
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final barWidth = constraints.maxWidth;
+                                final progressRatio = (_session.currentPercentage / 100.0).clamp(0.0, 1.0);
+                                final cubeX = (barWidth - 20) * progressRatio;
+
+                                return Stack(
+                                  clipBehavior: Clip.none,
+                                  alignment: Alignment.centerLeft,
+                                  children: [
+                                    // Сам прогресс-бар
+                                    Container(
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF100B24).withOpacity(0.9),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.6), width: 1.5),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF00E5FF).withOpacity(0.2),
+                                            blurRadius: 8,
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(5),
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Container(
+                                            width: barWidth * progressRatio,
+                                            decoration: const BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  Color(0xFF00E5FF),
+                                                  Color(0xFF00FF66),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                    // Бегущий мини-куб на прогресс-баре
+                                    Positioned(
+                                      left: cubeX,
+                                      top: -3,
+                                      child: Container(
+                                        width: 18,
+                                        height: 18,
+                                        decoration: BoxDecoration(
+                                          color: widget.playerColor1,
+                                          border: Border.all(color: Colors.black, width: 1.5),
+                                          borderRadius: BorderRadius.circular(2),
+                                          boxShadow: const [
+                                            BoxShadow(color: Colors.black54, blurRadius: 4),
+                                          ],
+                                        ),
+                                        child: Center(
+                                          child: Container(
+                                            width: 8,
+                                            height: 8,
+                                            color: widget.playerColor2,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+
+                        // Процент прохождения
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF140F30).withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF00FF66), width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF00FF66).withOpacity(0.3),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            '${_session.currentPercentage.toInt()}%',
+                            style: const TextStyle(
+                              color: Color(0xFF00FF66),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // Кнопка паузы
+                        GestureDetector(
+                          onTap: _togglePause,
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF140F30).withOpacity(0.85),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white70, width: 1.5),
+                            ),
+                            child: const Icon(Icons.pause_rounded, color: Colors.white, size: 24),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
 
-              // Кнопки режима практики (если включен)
+              // Бейдж режима практики
+              if (_session.isPracticeMode)
+                Positioned(
+                  top: 50,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00E5FF).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.diamond_outlined, color: Color(0xFF00E5FF), size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'РЕЖИМ ПРАКТИКИ',
+                            style: TextStyle(
+                              color: Color(0xFF00E5FF),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Кнопки режима практики
               if (_session.isPracticeMode)
                 Positioned(
                   bottom: 24,
                   left: 24,
                   child: Row(
                     children: [
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00E5FF),
-                          foregroundColor: Colors.black,
-                        ),
-                        onPressed: () => _session.addCheckpoint(),
-                        icon: const Icon(Icons.diamond),
-                        label: const Text('Чекпоинт'),
+                      _buildPracticeDiamondButton(
+                        icon: Icons.add,
+                        label: 'Чекпоинт',
+                        color: const Color(0xFF00E5FF),
+                        onTap: () => _session.addCheckpoint(),
                       ),
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () => _session.removeLastCheckpoint(),
-                        icon: const Icon(Icons.delete),
-                        label: const Text('Удалить'),
+                      const SizedBox(width: 14),
+                      _buildPracticeDiamondButton(
+                        icon: Icons.close,
+                        label: 'Удалить',
+                        color: const Color(0xFFFF0055),
+                        onTap: () => _session.removeLastCheckpoint(),
                       ),
                     ],
                   ),
@@ -326,77 +451,134 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildPracticeDiamondButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF140F30).withOpacity(0.9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.4),
+              blurRadius: 12,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildWinOverlay(BuildContext context) {
-    return Container(
-      color: Colors.black.withOpacity(0.75),
-      child: Center(
-        child: Container(
-          width: 380,
-          padding: const EdgeInsets.all(28.0),
-          decoration: BoxDecoration(
-            color: const Color(0xFF15102A),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFF00FF66), width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF00FF66).withOpacity(0.4),
-                blurRadius: 24,
-                spreadRadius: 4,
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'LEVEL COMPLETE!',
-                style: TextStyle(
-                  color: Color(0xFF00FF66),
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2.0,
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+      child: Container(
+        color: Colors.black.withOpacity(0.65),
+        child: Center(
+          child: Container(
+            width: 400,
+            padding: const EdgeInsets.all(28.0),
+            decoration: BoxDecoration(
+              color: const Color(0xFF15102A).withOpacity(0.95),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFF00FF66), width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00FF66).withOpacity(0.5),
+                  blurRadius: 32,
+                  spreadRadius: 4,
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                widget.level.title,
-                style: const TextStyle(color: Colors.white, fontSize: 18),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Попыток: ${_session.attempts}',
-                style: const TextStyle(color: Colors.white70, fontSize: 15),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey.shade800,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.home),
-                    label: const Text('Меню'),
+                const BoxShadow(
+                  color: Colors.black87,
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.emoji_events_rounded, color: Color(0xFFFFD700), size: 64),
+                const SizedBox(height: 8),
+                const Text(
+                  'LEVEL COMPLETE!',
+                  style: TextStyle(
+                    color: Color(0xFF00FF66),
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 3.0,
+                    shadows: [
+                      Shadow(color: Color(0xFF00FF66), blurRadius: 16),
+                    ],
                   ),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00FF66),
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    ),
-                    onPressed: () {
-                      _session.restart();
-                      setState(() {});
-                    },
-                    icon: const Icon(Icons.replay),
-                    label: const Text('Заново'),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  widget.level.title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Всего попыток: ${_session.attempts}',
+                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 15),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: NeonButton(
+                        onTap: () => Navigator.of(context).pop(),
+                        text: 'МЕНЮ',
+                        icon: Icons.home_rounded,
+                        primaryColor: const Color(0xFF555577),
+                        textColor: Colors.white,
+                        height: 48,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: NeonButton(
+                        onTap: () {
+                          _session.restart();
+                          setState(() {});
+                        },
+                        text: 'ЗАНОВО',
+                        icon: Icons.replay_rounded,
+                        primaryColor: const Color(0xFF00FF66),
+                        height: 48,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -404,96 +586,96 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildPauseOverlay(BuildContext context) {
-    return Container(
-      color: Colors.black.withOpacity(0.75),
-      child: Center(
-        child: Container(
-          width: 340,
-          padding: const EdgeInsets.all(24.0),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A2E),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFF00E5FF), width: 2),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'ПАУЗА',
-                style: TextStyle(
-                  color: Color(0xFF00E5FF),
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+      child: Container(
+        color: Colors.black.withOpacity(0.65),
+        child: Center(
+          child: Container(
+            width: 360,
+            padding: const EdgeInsets.all(24.0),
+            decoration: BoxDecoration(
+              color: const Color(0xFF140E2E).withOpacity(0.96),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFF00E5FF), width: 2.5),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00E5FF).withOpacity(0.4),
+                  blurRadius: 28,
+                  spreadRadius: 2,
                 ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00FF66),
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'ПАУЗА',
+                  style: TextStyle(
+                    color: Color(0xFF00E5FF),
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 3,
+                    shadows: [
+                      Shadow(color: Color(0xFF00E5FF), blurRadius: 14),
+                    ],
                   ),
-                  onPressed: _togglePause,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Продолжить', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey.shade800,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  onPressed: () {
+                const SizedBox(height: 6),
+                Text(
+                  widget.level.title,
+                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 15),
+                ),
+                const SizedBox(height: 18),
+
+                // Кнопка Продолжить
+                NeonButton(
+                  onTap: _togglePause,
+                  text: 'ПРОДОЛЖИТЬ',
+                  icon: Icons.play_arrow_rounded,
+                  primaryColor: const Color(0xFF00FF66),
+                  height: 48,
+                ),
+                const SizedBox(height: 10),
+
+                // Кнопка Рестарт
+                NeonButton(
+                  onTap: () {
                     _togglePause();
                     _session.restart();
                   },
-                  icon: const Icon(Icons.replay),
-                  label: const Text('Рестарт'),
+                  text: 'РЕСТАРТ',
+                  icon: Icons.replay_rounded,
+                  primaryColor: const Color(0xFFFF9900),
+                  height: 48,
                 ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(
-                      color: _session.isPracticeMode ? const Color(0xFF00E5FF) : Colors.white24,
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  onPressed: () {
+                const SizedBox(height: 10),
+
+                // Режим практики
+                NeonButton(
+                  onTap: () {
                     setState(() {
                       _session.isPracticeMode = !_session.isPracticeMode;
                     });
                   },
-                  icon: Icon(
-                    Icons.diamond,
-                    color: _session.isPracticeMode ? const Color(0xFF00E5FF) : Colors.white54,
-                  ),
-                  label: Text(_session.isPracticeMode ? 'Практика: ВКЛ' : 'Практика: ВЫКЛ'),
+                  text: _session.isPracticeMode ? 'ПРАКТИКА: ВКЛ' : 'ПРАКТИКА: ВЫКЛ',
+                  icon: Icons.diamond_rounded,
+                  primaryColor: const Color(0xFF00E5FF),
+                  height: 48,
                 ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.redAccent,
-                  ),
+                const SizedBox(height: 12),
+
+                // Выход в меню
+                TextButton.icon(
                   onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.exit_to_app),
-                  label: const Text('Выйти в главное меню'),
+                  icon: const Icon(Icons.exit_to_app_rounded, color: Colors.redAccent, size: 20),
+                  label: const Text(
+                    'Выйти в главное меню',
+                    style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
